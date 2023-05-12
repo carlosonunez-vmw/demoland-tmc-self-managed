@@ -1,0 +1,5 @@
+.env*
+!.env.example
+*.tfbackend
+.terraform
+.terraform.lock.hcl
