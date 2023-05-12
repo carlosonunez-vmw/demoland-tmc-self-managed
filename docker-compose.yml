@@ -1,0 +1,22 @@
+version: '2.7'
+services:
+  terraform:
+    image: carlosnunez/terraform:1.4.1-arm64
+    working_dir: /work
+    volumes:
+      - $PWD:/work
+    env_file: .env
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+  terraform-init:
+    extends: terraform
+    entrypoint: bash
+    environment:
+      DEFAULT_TERRAFORM_STATE_BUCKET_REGION: us-east-2
+    command:
+      - -c
+      - "./scripts/create_backend.sh && \
+         git config --global --add safe.directory '*' && \
+         terraform init -backend-config=/tmp/conf.tfbackend"
