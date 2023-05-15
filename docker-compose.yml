@@ -10,6 +10,7 @@ services:
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
       - AWS_SESSION_TOKEN
+      - AWS_REGION=us-east-2
   terraform-init:
     extends: terraform
     entrypoint: bash
@@ -20,3 +21,20 @@ services:
       - "./scripts/create_backend.sh && \
          git config --global --add safe.directory '*' && \
          terraform init -backend-config=/tmp/conf.tfbackend"
+  terraform-plan:
+    extends: terraform
+    command:
+      - plan
+      - -input=false
+  terraform-apply:
+    extends: terraform
+    command:
+      - apply
+      - -input=false
+      - -auto-approve
+      - -compact-warnings
+  terraform-output:
+    extends: terraform
+    command:
+      - output
+      - -json
