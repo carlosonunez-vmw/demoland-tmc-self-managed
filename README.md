@@ -76,7 +76,7 @@ changes.
 
    ```sh
    ./scripts/jumpbox.sh --private-key > /tmp/private_key
-   ssh -i /tmp/private_key ubuntu@$(./scripts/jumpbox.sh --public-ip) whoami
+   ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh) whoami
    ```
 
    Output should be `ubuntu`.
@@ -93,7 +93,7 @@ fetching the Tanzu CLI bundle
 > SSH into the jumpbox for all of the instructions below:
 >
 > ```sh
-> ssh -L 8080:localhost:8080 -i /tmp/private_key ubuntu@$(./scripts/jumpbox.sh --public-ip)
+> ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
 > ```
 
 1. Download the VMware Customer Connect CLI:
@@ -168,8 +168,8 @@ We're now ready to deploy TKG! Let's do it.
 
    ```sh
    scp -i /tmp/private_key conf/management_cluster.yaml \
-    ubuntu@$(./scripts/jumpbox.sh --public-ip) /tmp/cluster.yaml &&
-   ssh -i /tmp/private_key ubuntu@$(./scripts/jumpbox.sh --public-ip) \
+    $(./scripts/jumpbox.sh --ssh) /tmp/cluster.yaml &&
+   ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh) \
     tanzu management-cluster create -f /tmp/cluster.yaml
    ```
 
@@ -177,7 +177,7 @@ We're now ready to deploy TKG! Let's do it.
    jumpbox:
 
    ```sh
-   ssh -i /tmp/private_key ubuntu@$(./scripts/jumpbox.sh --public-ip) \
+   ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh) \
     tanzu management-cluster get
    ```
 
