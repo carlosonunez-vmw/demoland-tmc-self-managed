@@ -1,0 +1,80 @@
+#@ load("@ytt:data", "data")
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  annotations:
+    osInfo: ubuntu,20.04,amd64
+    run.tanzu.vmware.com/resolve-tkr: ""
+    tkg/plan: dev
+  labels:
+    tkg.tanzu.vmware.com/cluster-name: #@ "tmc-test-worker-{}".format(data.values.cluster_idx)
+  name: #@ "tmc-test-worker-{}".format(data.values.cluster_idx)
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 100.96.0.0/11
+    services:
+      cidrBlocks:
+      - 100.64.0.0/13
+  topology:
+    class: tkg-aws-default-v1.0.0
+    controlPlane:
+      metadata:
+        annotations:
+          run.tanzu.vmware.com/resolve-os-image: ami-region=us-east-2,os-name=ubuntu,os-arch=amd64
+      replicas: 1
+    variables:
+    - name: cni
+      value: antrea
+    - name: controlPlaneCertificateRotation
+      value:
+        activate: true
+        daysBefore: 90
+    - name: podSecurityStandard
+      value:
+        audit: baseline
+        deactivated: false
+        warn: baseline
+    - name: region
+      value: us-east-2
+    - name: sshKeyName
+      value: tkg-jumpbox
+    - name: loadBalancerSchemeInternal
+      value: false
+    - name: bastion
+      value:
+        enabled: true
+    - name: network
+      value:
+        subnets:
+        - az: us-east-2b
+          private:
+            id: subnet-022577ee0737256a2
+          public:
+            id: subnet-0f8f244570fa2c918
+        vpc:
+          existingID: vpc-00daff73dbb477824
+    - name: identityRef
+      value: {}
+    - name: worker
+      value:
+        instanceType: t2.2xlarge
+        rootVolume:
+          sizeGiB: 80
+    - name: controlPlane
+      value:
+        instanceType: t2.2xlarge
+        rootVolume:
+          sizeGiB: 80
+    version: v1.24.10+vmware.1-tkg.2
+    workers:
+      machineDeployments:
+      - class: tkg-worker
+        failureDomain: us-east-2b
+        metadata:
+          annotations:
+            run.tanzu.vmware.com/resolve-os-image: ami-region=us-east-2,os-name=ubuntu,os-arch=amd64
+        name: md-0
+        replicas: 1

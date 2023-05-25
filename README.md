@@ -156,11 +156,11 @@ fetching the Tanzu CLI bundle
 
    Your output should contain `Hello from Docker!`
 
-#### Deploy TKG Infrastructure
+#### Deploy TKG Management Cluster
 
 ##### Summary
 
-We're now ready to deploy TKG! Let's do it.
+We're now ready to deploy TKG! Let's start with the management cluster.
 
 ##### Instructions
 
@@ -209,25 +209,49 @@ Providers:
   capi-system                        cluster-api            CoreProvider            cluster-api   v1.2.8
 ```
 
-  3. Copy the kubeconfig from the jumpbox into a temporary directory
-     on your machine:
+3. Copy the kubeconfig from the jumpbox into a temporary directory
+ on your machine:
 
-     ```sh
-     scp -i /tmp/private_key \
-       ubuntu@$(./scripts/jumpbox.sh --public-ip) /home/ubuntu/.kube/config \
-       /tmp/kubeconfig
-     ```
+ ```sh
+ scp -i /tmp/private_key \
+   $(./scripts/jumpbox.sh --ssh) /home/ubuntu/.kube/config \
+   /tmp/kubeconfig
+ ```
 
-  4. Confirm that you can list management clusters from your machine:
+4. Confirm that you can list management clusters from your machine:
 
-     ```sh
-     kubectl --kubeconfig /tmp/kubeconfig get cluster -A
-     ```
+```sh
+kubectl --kubeconfig /tmp/kubeconfig get cluster -A
+```
 
-     Output should be similar to the below:
+Output should be similar to the below:
 
-     ```sh
-     NAMESPACE    NAME       PHASE         AGE    VERSION
-     tkg-system   tmc-test   Provisioned   2d3h   v1.24.10+vmware.1
-     ```
+```sh
+NAMESPACE    NAME       PHASE         AGE    VERSION
+tkg-system   tmc-test   Provisioned   2d3h   v1.24.10+vmware.1
+```
 
+#### Deploy the Workload Clusters
+
+##### Summary
+
+Now we're going to create the three workload clusters needed by TMC.
+
+##### Instructions
+
+1. Copy the worker cluster `ytt` template to the jumpbox. This will create
+   a workload cluster in AWS using the `dev` plan with `t2.2xlarge` nodes.
+
+```sh
+scp -i /tmp/private_key \
+    ./conf/workload_cluster.yaml.tmpl
+    $(./scripts/jumpbox.sh --ssh) /tmp/cluster.yaml
+```
+
+2. Create three workload clusters:
+
+```sh
+ssh -i /tmp/private_key \
+    $(./scripts/jumpbox.sh --ssh) \
+    bash -c 'for i in $(seq 1 3); do ytt template --data-value cluster_idx=$i -f /tmp/workload_cluster.yaml  > /tmp/cluster-$i.yaml && tanzu cluster create -f /tmp/cluster-$i.yaml -v 9; rm /tmp/cluster-$i.yaml; done'
+```
