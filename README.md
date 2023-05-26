@@ -7,12 +7,27 @@ within AWS.
 
 - Docker
 - AWS Credentials
+- An AWS Route53 zone (see [note](#about-dns))
 - Terraform (via Docker; no installation required)
 - `jq`
 - Tanzu CLI
 - Carvel tools
 
 ## Getting Started
+
+### About DNS
+
+Tanzu Mission Control requires several DNS records to be created ahead of time.
+
+This guide assumes that you have:
+
+- A DNS domain that you own (registrar doesn't matter), and
+- A Route53 hosted zone for that domain.
+
+[Follow these
+steps](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingHostedZone.html)
+to create a hosted zone for a domain that you own.
+
 
 ### Create the TKG Control Plane and Shared Services cluster
 
