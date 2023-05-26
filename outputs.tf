@@ -6,3 +6,8 @@ output "jumpbox_private_key" {
   value     = module.key_pair.private_key_openssh
   sensitive = true
 }
+
+output "user" {
+  value     = "ubuntu"
+  sensitive = true
+}
