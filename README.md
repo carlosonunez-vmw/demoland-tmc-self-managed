@@ -270,3 +270,23 @@ ssh -i /tmp/private_key \
     $(./scripts/jumpbox.sh --ssh) \
     bash -c 'for i in $(seq 1 3); do ytt template --data-value cluster_idx=$i -f /tmp/workload_cluster.yaml  > /tmp/cluster-$i.yaml && tanzu cluster create -f /tmp/cluster-$i.yaml -v 9; rm /tmp/cluster-$i.yaml; done'
 ```
+
+3. Log into the management cluster and confirm that the clusters are running:
+
+```sh
+tanzu login --kubeconfig /tmp/kubeconfig \
+    --context tmc-test-admin@tmc-test \
+    --server tmc-test &&
+tanzu cluster list
+```
+
+Output should look like this:
+
+```
+  NAME               NAMESPACE  STATUS    CONTROLPLANE  WORKERS  KUBERNETES         ROLES   PLAN  TKR
+  tmc-test-worker-1  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
+  tmc-test-worker-2  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
+  tmc-test-worker-3  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
+```
+
+#### Install TMC
