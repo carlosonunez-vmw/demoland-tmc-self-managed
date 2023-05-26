@@ -12,6 +12,7 @@ within AWS.
 - `jq`
 - Tanzu CLI
 - Carvel tools
+- VMware VPN access
 
 ## Getting Started
 
@@ -289,4 +290,24 @@ Output should look like this:
   tmc-test-worker-3  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
 ```
 
-#### Install TMC
+### Install TMC
+
+Now that we have our clusters ready, let's install TMC Self-Managed.
+
+#### Retrieve the installer
+
+##### Summary
+
+TMC Self-Managed is installed via a separate x86-compiled installer binary. This
+section will guide you through downloading it.
+
+##### Instructions
+
+1. Run `./scripts/fetch_tmc_installer.sh`.  This will download the TMC
+   installer from the link you provided in the dotenv.
+
+> ✅ If your URL is a VMware internal build, un-comment and define
+> the `HTTP(S)_PROXY` environment variables in the dotenv, or turn
+> on your VPN.
+
+> ✅ This is a big file; please be patient while it downloads.
