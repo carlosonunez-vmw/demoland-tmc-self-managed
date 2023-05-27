@@ -8,6 +8,12 @@ module "jumpbox-sg" {
   egress_rules        = ["all-all"]
 }
 
+resource "aws_ebs_volume" "extra" {
+  availability_zone = element(data.aws_availability_zones.available.names, 0)
+  size              = 20
+}
+
+
 module "jumpbox" {
 
   ami                         = "ami-0a14db46282743a66" # Ubuntu Focal in us-east-2; TODO: Use a data provider here
@@ -21,4 +27,10 @@ module "jumpbox" {
   subnet_id                   = module.vpc.public_subnets[0]
   associate_public_ip_address = true
   create_iam_instance_profile = true
+}
+
+resource "aws_volume_attachment" "extras" {
+  device_name = "/dev/sdh"
+  volume_id   = aws_ebs_volume.extra.id
+  instance_id = module.jumpbox.id
 }

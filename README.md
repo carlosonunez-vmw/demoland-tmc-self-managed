@@ -97,6 +97,9 @@ changes.
 
    Output should be `ubuntu`.
 
+> ✅ It will take a few seconds for `jumpbox.sh` to return a private key.
+> Subsequent runs should be almost immediate.
+
 #### Prepare the jumpbox
 
 ##### Summary
@@ -106,11 +109,23 @@ fetching the Tanzu CLI bundle
 
 ##### Instructions
 
-> SSH into the jumpbox for all of the instructions below:
+> ✅ SSH into the jumpbox for all of the instructions below:
 >
 > ```sh
 > ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
 > ```
+
+1. Mount the extra disk provided to the machine and configure `fstab` to
+   automount it on boot:
+
+    ```sh
+    sudo mkdir /mnt/extra
+    sudo parted --script -a optimal /dev/xvdh mklabel msdos -- \
+        mkpart primary ext4 0% 100% &&
+        sudo mkfs.ext4 /dev/xvdh &&
+        sudo mount -t ext4 /dev/xvdh /mnt/extra &&
+        sudo sh -c 'echo "LABEL=extra /mnt/extra ext4 defaults,discard 0 1" > /etc/fstab'
+    ```
 
 1. Download the VMware Customer Connect CLI:
 
@@ -304,10 +319,141 @@ section will guide you through downloading it.
 ##### Instructions
 
 1. Run `./scripts/fetch_tmc_installer.sh`.  This will download the TMC
-   installer from the link you provided in the dotenv.
+   installer tarball from the link you provided in the dotenv. It will also tell
+   you where the `tmc-installer` binary was saved into.
 
 > ✅ If your URL is a VMware internal build, un-comment and define
 > the `HTTP(S)_PROXY` environment variables in the dotenv, or turn
 > on your VPN.
 
 > ✅ This is a big file; please be patient while it downloads.
+
+2. `scp` the `tmc-installer` tarball to the bastion host at its extra mount:
+
+  ```sh
+  scp -i /tmp/private_key /path/to/installer \
+    $(./scripts/jumpbox.sh --ssh):/mnt/extra/tmc-installer
+  ```
+
+#### Push TMC Self-Managed Images to Container Registry
+
+##### Summary
+
+The TMC Local Installer bundles all of the images that it uses into the
+tarball to better facilitate airgapped installations.
+
+We'll now need to deploy these images into a Harbor registry running in
+`tmc-test-worker-1`.
+
+1. Switch to `tmc-test-worker-1`:
+
+```sh
+kubectl --kubeconfig /tmp/kubeconfig \
+    config use-context tmc-test-worker-1-admin@tmc-test-worker-1
+```
+
+2. Add the Tanzu Standard Packages repository:
+
+```sh
+kubectl --kubeconfig /tmp/kubeconfig create ns tanzu-package-repo-global &&
+    tanzu package repository add vmware \
+        -n tanzu-package-repo-global \
+        --url projects.registry.vmware.com/tkg/packages/standard/repo:v1.6.1 \
+        --kubeconfig /tmp/kubeconfig
+```
+
+3. Install `cert-manager` and Contour, if you don't already have them:
+
+```sh
+tanzu package install --kubeconfig /tmp/kubeconfig \
+    -n tanzu-package-repo-global \
+    cert-manager \
+    -p cert-manager.tanzu.vmware.com \
+    -v 1.7.2+vmware.1-tkg.1
+tanzu package install --kubeconfig /tmp/kubeconfig \
+    -n tanzu-package-repo-global \
+    contour \
+    -p contour.tanzu.vmware.com \
+    -v 1.20.2+vmware.1-tkg.1
+```
+
+3. Confirm that Harbor is available to install:
+
+```sh
+tanzu package available list -A --kubeconfig /tmp/kubeconfig |
+    grep harbor
+```
+
+Output should look like this:
+
+```
+tanzu-package-repo-global  harbor.tanzu.vmware.com                       harbor
+```
+
+4. Get the available versions you can install:
+
+```sh
+tanzu package available list harbor.tanzu.vmware.com \
+    -A --kubeconfig /tmp/kubeconfig |
+    grep harbor
+```
+
+
+5. Generate default values for that version and save them
+   to `/tmp/harbor.values`, setting the hostname along the way:
+
+```sh
+tanzu package available get \
+    harbor.tanzu.vmware.com/2.6.1+vmware.1-tkg.1 \
+    -n tanzu-package-repo-global \
+    --kubeconfig /tmp/kubeconfig \
+    --default-values-file-output /tmp/harbor.values
+sed -i 's/^# hostname:/hostname: tanzufederal.com/' /tmp/harbor.values
+```
+
+6. Add credentials; change anything that says `change_me`:
+
+```sh
+cat >>/tmp/harbor.values <<-EOF
+harborAdminPassword: change_me
+secretKey: change_me_must_be_16_chars_long
+core:
+  xsrfKey: change_me_must_be_32_chars_long
+  secret: change_me
+jobservice:
+  secret: change_me
+registry:
+  secret: change_me
+database:
+  password: change_me
+```
+
+> ✅ Perform any other configuration changes you'd like by opening
+> /tmp/harbor.values in your favorite editor.
+
+6. Install the package:
+
+```sh
+tanzu package install --values-file /tmp/harbor.values \
+    --kubeconfig /tmp/kubeconfig \
+    -n tanzu-package-repo-global \
+    harbor \
+    -p harbor.tanzu.vmware.com \
+    -v $VERSION
+```
+
+> ✅ SSH into the jumpbox for all of the instructions below:
+>
+> ```sh
+> ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
+> ```
+
+3. Create a directory to store the TMC installer's contents and extract
+   the tarball into there:
+
+   ```sh
+   mkdir -p /mnt/extra/tmc &&
+       tar -xf /mnt/extra/tmc-installer -C /mnt/extra/tmc
+   ```
+
+4. 
