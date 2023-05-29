@@ -305,6 +305,7 @@ Output should look like this:
   tmc-test-worker-3  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
 ```
 
+
 ### Install TMC
 
 Now that we have our clusters ready, let's install TMC Self-Managed.
@@ -335,7 +336,7 @@ section will guide you through downloading it.
     $(./scripts/jumpbox.sh --ssh):/mnt/extra/tmc-installer
   ```
 
-#### Push TMC Self-Managed Images to Container Registry
+#### Provision Harbor
 
 ##### Summary
 
@@ -345,6 +346,18 @@ tarball to better facilitate airgapped installations.
 We'll now need to deploy these images into a Harbor registry running in
 `tmc-test-worker-1`.
 
+But first, we need to install Harbor. Let's do that now.
+
+##### Instructions
+
+1. Set your DNS domain name as a variable:
+
+```sh
+export YOUR_DOMAIN="your-domain-here"
+```
+
+> ✅ Not sure what this is? Consult "About DNS" [above](#about-dns).
+
 1. Switch to `tmc-test-worker-1`:
 
 ```sh
@@ -352,21 +365,62 @@ kubectl --kubeconfig /tmp/kubeconfig \
     config use-context tmc-test-worker-1-admin@tmc-test-worker-1
 ```
 
-2. Add the Tanzu Standard Packages repository:
+2. Create a namespace to hold our Carvel package registries.
 
 ```sh
-kubectl --kubeconfig /tmp/kubeconfig create ns tanzu-package-repo-global &&
+kubectl --kubeconfig /tmp/kubeconfig create ns tanzu-package-repo-global
+```
+
+2. Add the Tanzu Standard Packages repository into that namespace:
+
+```sh
     tanzu package repository add vmware \
         -n tanzu-package-repo-global \
         --url projects.registry.vmware.com/tkg/packages/standard/repo:v1.6.1 \
         --kubeconfig /tmp/kubeconfig
 ```
 
+3. Get the versions of Contour and `cert-manager` available in this repo:
+
+```sh
+for app in cert-manager contour
+do tanzu package available list "$app.tanzu.vmware.com" \
+    -A --kubeconfig /tmp/kubeconfig
+done
+```
+
+Output should look like this:
+
+```
+  NAMESPACE                  NAME                           VERSION               RELEASED-AT
+  tanzu-package-repo-global  cert-manager.tanzu.vmware.com  1.1.0+vmware.1-tkg.2  2020-11-24 12:00:00 -0600 CST
+  tanzu-package-repo-global  cert-manager.tanzu.vmware.com  1.1.0+vmware.2-tkg.1  2020-11-24 12:00:00 -0600 CST
+  tanzu-package-repo-global  cert-manager.tanzu.vmware.com  1.5.3+vmware.2-tkg.1  2021-08-23 12:22:51 -0500 CDT
+  tanzu-package-repo-global  cert-manager.tanzu.vmware.com  1.5.3+vmware.6-tkg.1  2021-08-23 12:22:51 -0500 CDT
+  tanzu-package-repo-global  cert-manager.tanzu.vmware.com  1.7.2+vmware.1-tkg.1  2021-10-29 07:00:00 -0500 CDT
+
+  NAMESPACE                  NAME                      VERSION                RELEASED-AT
+  tanzu-package-repo-global  contour.tanzu.vmware.com  1.17.1+vmware.1-tkg.1  2021-07-23 13:00:00 -0500 CDT
+  tanzu-package-repo-global  contour.tanzu.vmware.com  1.17.2+vmware.1-tkg.2  2021-07-23 13:00:00 -0500 CDT
+  tanzu-package-repo-global  contour.tanzu.vmware.com  1.17.2+vmware.1-tkg.3  2021-07-23 13:00:00 -0500 CDT
+  tanzu-package-repo-global  contour.tanzu.vmware.com  1.18.2+vmware.1-tkg.1  2021-10-04 19:00:00 -0500 CDT
+  tanzu-package-repo-global  contour.tanzu.vmware.com  1.20.2+vmware.2-tkg.1  2022-06-13 19:00:00 -0500 CDT
+```
+
+Keep note of the latest versions available. For example, given the output above,
+the latest versions of `cert-manager` and Contour would be:
+
+- `cert-manager`: **1.7.2+vmware.1-tkg.1**
+- `contour`: **1.20.2+vmware.2-tkg.1**
+
+> ✅ **NOTE**: This will only hold the kapp-managed packages for these
+> applications, NOT their actual resources.
+
 3. Install `cert-manager` and Contour, if you don't already have them:
 
 ```sh
 tanzu package install --kubeconfig /tmp/kubeconfig \
-    -n tanzu-package-repo-global \
+    -n tanzu-package-repo-global
     cert-manager \
     -p cert-manager.tanzu.vmware.com \
     -v 1.7.2+vmware.1-tkg.1
@@ -374,7 +428,8 @@ tanzu package install --kubeconfig /tmp/kubeconfig \
     -n tanzu-package-repo-global \
     contour \
     -p contour.tanzu.vmware.com \
-    -v 1.20.2+vmware.1-tkg.1
+    -v 1.20.2+vmware.2-tkg.1
+    --values-file ./conf/contour.values
 ```
 
 3. Confirm that Harbor is available to install:
@@ -408,7 +463,7 @@ tanzu package available get \
     -n tanzu-package-repo-global \
     --kubeconfig /tmp/kubeconfig \
     --default-values-file-output /tmp/harbor.values
-sed -i 's/^# hostname:/hostname: tanzufederal.com/' /tmp/harbor.values
+sed -i "s/^# hostname:/hostname: harbor.$YOUR_DOMAIN/" /tmp/harbor.values
 ```
 
 6. Add credentials; change anything that says `change_me`:
@@ -442,13 +497,139 @@ tanzu package install --values-file /tmp/harbor.values \
     -v $VERSION
 ```
 
+#### Create DNS records
+
+##### Summary
+
+If you looked at the Terraform configuration code, you might have noticed
+that we create several A record resources but did not deploy them.
+
+We did not deploy them because we didn't have a Kubernetes cluster or a
+`LoadBalancer` object within that cluster to send external traffic to.
+
+Now that we have both, let's re-run Terraform so that we can create these records
+and have Terraform manage them.
+
+##### Instructions
+
+1. Get the IP address of the `LoadBalancer` object the Envoy
+   Ingress Controller reverse proxy is bound to in `tmc-test-worker-1`
+
+```sh
+export CLUSTER_IP=$(host "$(kubectl --kubeconfig /tmp/kubeconfig get svc envoy  \
+    -n tanzu-system-ingress \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')" |
+    sed 's/.*has address //' |
+    tr -d ' ' |
+    tr '\n' ',' |
+    sed 's/,$//')
+```
+
+2. Confirm that `$CLUSTER_IP` is not empty.
+
+```sh
+test -n "$CLUSTER_IP"  && echo "Your IP is: $CLUSTER_IP"
+```
+
+Your output **MUST** look like the below to continue:
+
+```
+Your IP is: 13.58.119.162,13.58.198.149
+```
+
+3. Re-run Terraform:
+
+```sh
+docker-compose run --rm terraform-apply-dns
+```
+
+4. Confirm that you can resolve `harbor.$YOUR_DOMAIN` from
+   an external resolver, like Google's `8.8.8.8`:
+
+```sh
+nslookup harbor.$YOUR_DOMAIN 8.8.8.8
+```
+
+You should get a response:
+
+```
+$: nslookup harbor.tanzufederal.com 8.8.8.8
+Server:         8.8.8.8
+Address:        8.8.8.8#53
+
+Non-authoritative answer:
+Name:   harbor.tanzufederal.com
+Address: 13.58.119.162
+Name:   harbor.tanzufederal.com
+Address: 13.58.198.149
+```
+
+5. Using your web browser, visit `harbor.$YOUR_DOMAIN.com` and confirm that
+   you can log in. Admin is `admin`. Password is the password you used
+   when you installed Harbor.
+
+6. Now visit `harbor.$YOUR_DOMAIN.com/devcenter-api-2.0` and click the
+   "Authorize" button to enable the REST API.
+
+> ✅ If you forgot the password you used, you can get it from the `tanzu` CLI:
+>
+> ```sh
+> tanzu package installed get -n tanzu-package-repo-global \
+>   --kubeconfig /tmp/kubeconfig \
+>   harbor --values | grep harborAdminPassword
+> ```
+
 > ✅ SSH into the jumpbox for all of the instructions below:
 >
 > ```sh
 > ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
 > ```
 
-3. Create a directory to store the TMC installer's contents and extract
+#### Push TMC images
+
+##### Summary
+
+The TMC installer bundle comes with all of the container images it needs
+to start up TMC.
+
+Now that we have Harbor up and running, let's use the TMC installer CLI
+to push them up.
+
+##### Instructions
+
+1. Get the password to your Harbor instance.
+
+```sh
+HARBOR_PASSWORD=$(tanzu package installed get -n tanzu-package-repo-global \
+    --kubeconfig /tmp/kubeconfig \
+    harbor --values |
+    grep harborAdminPassword |
+    cut -f2 -d ':' |
+    sed 's/ $//'
+)
+```
+
+2. Create a public project in Harbor called `tanzu-images`:
+
+```sh
+curl -k -X POST \
+    -u admin:$HARBOR_PASSWORD \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{"project_name":"tanzu-images","public":true}'  \
+    "https://harbor.$DOMAIN_NAME/api/v2.0/projects"
+```
+
+3. SSH into the jumpbox:
+
+```sh
+ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
+```
+
+> ➡️  All instructions below in this section will be don  in the jumpbox.
+
+
+4. Create a directory to store the TMC installer's contents and extract
    the tarball into there:
 
    ```sh
@@ -456,4 +637,20 @@ tanzu package install --values-file /tmp/harbor.values \
        tar -xf /mnt/extra/tmc-installer -C /mnt/extra/tmc
    ```
 
-4. 
+5. Store Harbor's certificate chain into `/usr/share/ca-certificates` and
+   update the Root CA bundle.
+
+   ```sh
+   openssl s_client -partial_chain -showcerts -connect harbor.tanzufederal.com:443 < /dev/null |
+    sudo awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/harbor-cert"a".pem"; print >out}'
+    update-ca-certificates
+   ```
+
+5. Push TMC's images up to Harbor.
+
+    ```sh
+    /mnt/extra/tmc/tmc-local push-images harbor --project='harbor.tanzufederal.com/tanzu-images/tmc' --username=admin --password=supersecret
+    ```
+
+> ➡️ This will take a while to finish. Grab a cup of coffee, go for a run, or
+> occupy yourself somehow for 15 minutes!

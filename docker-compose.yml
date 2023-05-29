@@ -33,6 +33,11 @@ services:
       - -input=false
       - -auto-approve
       - -compact-warnings
+  terraform-apply-dns:
+    extends: terraform-apply
+    environment:
+      - TF_VAR_domain_name=${DOMAIN_NAME}
+      - TF_VAR_kubernetes_cluster_ingress_ip=${CLUSTER_IP}
   terraform-output:
     extends: terraform
     command:

@@ -11,7 +11,3 @@ output "user" {
   value     = "ubuntu"
   sensitive = true
 }
-
-output "registry_url" {
-  value = module.repository.repository_url
-}
