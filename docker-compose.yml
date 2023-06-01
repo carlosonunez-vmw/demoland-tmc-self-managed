@@ -38,6 +38,8 @@ services:
     environment:
       - TF_VAR_domain_name=${DOMAIN_NAME}
       - TF_VAR_kubernetes_cluster_ingress_ip=${CLUSTER_IP}
+      - TF_VAR_harbor_cluster_ingress_elb=${HARBOR_FQDN}
+      - TF_VAR_tmc_local_cluster_ingress_elb_fqdn=${TMC_LOCAL_FQDN}
   terraform-output:
     extends: terraform
     command:

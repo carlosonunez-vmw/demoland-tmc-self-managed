@@ -358,7 +358,7 @@ export YOUR_DOMAIN="your-domain-here"
 
 > ✅ Not sure what this is? Consult "About DNS" [above](#about-dns).
 
-1. Switch to `tmc-test-worker-1`:
+1. Switch to `tmc-test-worker-3`:
 
 ```sh
 kubectl --kubeconfig /tmp/kubeconfig \
@@ -431,6 +431,16 @@ tanzu package install --kubeconfig /tmp/kubeconfig \
     -v 1.20.2+vmware.2-tkg.1
     --values-file ./conf/contour.values
 ```
+3. Repeat the steps above, but on `tmc-test-worker-3`
+
+```sh
+kubectl --kubeconfig /tmp/kubeconfig \
+    config use-context tmc-test-worker-3-admin@tmc-test-worker-3
+```
+
+Switch back to `tmc-test-worker-1` once done.
+
+> ⚠️  **DO NOT ** install Contour!
 
 3. Confirm that Harbor is available to install:
 
@@ -512,23 +522,19 @@ and have Terraform manage them.
 
 ##### Instructions
 
-1. Get the IP address of the `LoadBalancer` object the Envoy
+1. Get the FQDN address of the `LoadBalancer` object the Envoy
    Ingress Controller reverse proxy is bound to in `tmc-test-worker-1`
 
 ```sh
-export CLUSTER_IP=$(host "$(kubectl --kubeconfig /tmp/kubeconfig get svc envoy  \
+export HARBOR_FQDN=$(kubectl --kubeconfig /tmp/kubeconfig get svc envoy  \
     -n tanzu-system-ingress \
-    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')" |
-    sed 's/.*has address //' |
-    tr -d ' ' |
-    tr '\n' ',' |
-    sed 's/,$//')
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
 ```
 
-2. Confirm that `$CLUSTER_IP` is not empty.
+2. Confirm that `$HARBOR_FQDN` is not empty.
 
 ```sh
-test -n "$CLUSTER_IP"  && echo "Your IP is: $CLUSTER_IP"
+test -n "$HARBOR_FQDN"  && echo "Your IP is: $HARBOR_FQDN"
 ```
 
 Your output **MUST** look like the below to continue:
@@ -579,11 +585,47 @@ Address: 13.58.198.149
 >   harbor --values | grep harborAdminPassword
 > ```
 
-> ✅ SSH into the jumpbox for all of the instructions below:
->
-> ```sh
-> ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
-> ```
+7. Since Harbor is provisioned with a self-signed certificate, our workers
+   will fail to pull images stored within its registries.
+
+   To work around this, we need to patch `containerd` on all of our workers
+   to ensure that it's marked as an insecure registry.
+
+   Run the commands below to do this:
+
+```sh
+for idx in $(seq 1 3)
+do
+    kubectl --kubeconfig /tmp/kubeconfig --context tmc-test-worker-$idx-admin@tmc-test-worker-$idx get node -o yaml -A |
+    yq -r '.items[].metadata.name' |
+    while read -r hostname
+    do
+        kubectl --context tmc-test-worker-$idx-admin@tmc-test-worker-$idx \
+            --kubeconfig /tmp/kubeconfig \
+            apply -f  <(ytt --file ./conf/nsenter_pod.yaml -v hostname="$hostname")
+        kubectl --context tmc-test-worker-$idx-admin@tmc-test-worker-$idx \
+            --kubeconfig /tmp/kubeconfig \
+            exec -i get-into-node-$hostname  -- \
+            sh -c "echo '$(sed 's/$DOMAIN_NAME/""$DOMAIN_NAME""/g' ./conf/harbor_insecure_registry.toml)' >> /etc/containerd/config.toml ; systemctl restart containerd"
+    done
+done
+```
+
+8. Wait for nodes to become `Ready` again:
+
+```sh
+for idx in $(seq 1 3)
+do
+    kubectl --kubeconfig /tmp/kubeconfig --context tmc-test-worker-$idx-admin@tmc-test-worker-$idx get node -o yaml -A |
+    yq -r '.items[].metadata.name' |
+    while read -r hostname
+    do
+        kubectl --kubeconfig /tmp/kubeconfig \
+            --context tmc-test-worker-$idx-admin@tmc-test-worker-$idx \
+            wait -for=condition=Ready node $hostname
+    done
+done
+```
 
 #### Push TMC images
 
@@ -596,6 +638,21 @@ Now that we have Harbor up and running, let's use the TMC installer CLI
 to push them up.
 
 ##### Instructions
+
+1. Create a namespace called `tmc-local` and a self-signed Cert Manager Issuer
+   from the file provided:
+
+```sh
+kubectl --kubeconfig /tmp/kubeconfig create ns tmc-local
+kubectl --kubeconfig /tmp/kubeconfig create -f ./conf/issuer.yaml
+```
+
+1. SCP the TMC installer values to the jumpbox:
+
+```sh
+scp -i /tmp/private_key ./conf/tmc.values.yaml \
+    $(./scripts/jumpbox.sh --ssh):/tmp/values.yaml
+```
 
 1. Get the password to your Harbor instance.
 
@@ -628,6 +685,11 @@ ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
 
 > ➡️  All instructions below in this section will be don  in the jumpbox.
 
+4. Install `yq`:
+
+```sh
+sudo snap install yq
+```
 
 4. Create a directory to store the TMC installer's contents and extract
    the tarball into there:
@@ -649,8 +711,83 @@ ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
 5. Push TMC's images up to Harbor.
 
     ```sh
-    /mnt/extra/tmc/tmc-local push-images harbor --project='harbor.tanzufederal.com/tanzu-images/tmc' --username=admin --password=supersecret
+    /mnt/extra/tmc/tmc-local push-images harbor \
+        --project='harbor.$YOUR_DOMAIN/tanzu-images/tmc' \
+        --username=admin --password=supersecret
     ```
 
 > ➡️ This will take a while to finish. Grab a cup of coffee, go for a run, or
 > occupy yourself somehow for 15 minutes!
+
+6. Edit the values file you copied earlier into `/tmp/values.yaml`. Replace any
+   values that say `change_me` or have a `$` prepended to them.
+
+> You can re-generate this values file by performing the steps below:
+> ```sh
+> /mnt/extra/tmc/tmc-local show-values-schema --output-file /tmp/schema.json
+> docker run -v /tmp:/tmp --rm challisa/jsf jsf \
+>     --schema /tmp/schema.json
+>     --instance /tmp/values.json
+> yq -P . < /tmp/values.json > /tmp/values.yaml
+> ```
+
+7. Add Harbor's root certificate to the values file:
+
+```sh
+cat >>/tmp/values.yaml <<-EOF
+trustedCAs:
+  harbor.pem: |
+$(sed 's/^/    /g' /usr/local/share/ca-certificates/harbor-cert*.crt)
+EOF
+```
+
+7. Validate the values:
+
+```sh
+/mnt/extra/tmc/tmc-local validate-values /tmp/values.yaml
+```
+
+It should return `Looks Good!`.
+
+8. Deploy TMC!
+
+```sh
+/mnt/extra/tmc/tmc-local deploy --values /tmp/values.yaml \
+  --image-prefix='harbor.$YOUR_DOMAIN/tanzu-images/tmc' \
+  --kubeconfig=$HOME/.kube/config
+```
+
+9. Terminate your SSH session.
+
+#### Update DNS Configuration
+
+##### Summary
+
+Now that TMC is installed, we need to create DNS records for the remaining
+TMC components.
+
+To do that, we'll re-run Terraform one more time so that it can do this.
+
+##### Instructions
+
+1. Get the FQDN of both Envoy ELBs at `tmc-test-worker-1` and
+   `tmc-test-worker-3`:
+
+```sh
+export HARBOR_FQDN=$(kubectl --kubeconfig /tmp/kubeconfig \
+    --context tmc-test-worker-1-admin@tmc-test-worker-1 \
+    get svc envoy  \
+    -n tanzu-system-ingress \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+export TMC_LOCAL_FQDN=$(kubectl --kubeconfig /tmp/kubeconfig \
+    --context tmc-test-worker-3-admin@tmc-test-worker-3 \
+    get svc contour-envoy  \
+    -n tmc-local \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+```
+
+2. Re-run Terraform and create the DNS records.
+
+```sh
+docker-compose run --rm terraform-apply-dns
+```

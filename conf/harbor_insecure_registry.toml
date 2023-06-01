@@ -1,0 +1,3 @@
+  [plugins."io.containerd.grpc.v1.cri".registry.configs]
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."harbor.$DOMAIN_NAME".tls]
+      insecure_skip_verify = true

@@ -1,0 +1,15 @@
+minioRootUser: admin
+minioRootPassword: change_me
+postgresUserPassword: change_me
+redisPassword: change_me
+clusterIssuer: tmc-local-issuer
+dnsZone: tmc.$YOUR_DOMAIN
+oidc:
+  clientSecret: $YOUR_OKTA_CLIENT_SECRET
+  issuerType: pinniped
+  issuerURL: $YOUR_OKTA_ISSUER_URL
+  clientID: $YOUR_OKTA_CLIENT_ID
+contourEnvoyServiceType: LoadBalancer
+telemetry:
+  ceipAgreement: true
+  ceipOptIn: true

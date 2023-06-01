@@ -1,0 +1,24 @@
+#@ load("@ytt:data", "data")
+apiVersion: v1
+kind: Pod
+metadata:
+  name: #@ "get-into-node-{}".format(data.values.hostname)
+spec:
+  hostPID: true
+  hostNetwork: true
+  nodeSelector:
+    "kubernetes.io/hostname": #@ data.values.hostname
+  containers:
+    - name: nsenter
+      image: alexeiled/nsenter:2.34
+      command:
+        - "/nsenter"
+        - "--all"
+        - "--target=1"
+        - "--"
+        - "su"
+        - "-"
+      stdin: true
+      tty: true
+      securityContext:
+        privileged: true
