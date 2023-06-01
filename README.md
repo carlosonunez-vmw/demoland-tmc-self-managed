@@ -719,7 +719,63 @@ sudo snap install yq
 > ➡️ This will take a while to finish. Grab a cup of coffee, go for a run, or
 > occupy yourself somehow for 15 minutes!
 
-6. Edit the values file you copied earlier into `/tmp/values.yaml`. Replace any
+6. Disconnect from the SSH session.
+
+#### Gather Certificates
+
+##### Summary
+
+TMC uses `cert-manager` to issue certificates from your root CA.
+
+This section describes how to configure a self-signed certificate issuer within
+your TMC cluster and expose its root certificate to TMC services within.
+
+##### Instructions
+
+1. Create a self-signed certificate with `openssl`:
+
+```sh
+openssl req -x509 -newkey rsa:4096 \
+    -keyout /tmp/tmc-key.pem \
+    -out /tmp/tmc-cert.pem \
+    -sha256 -days 3650 -nodes \
+    -subj "/CN=$YOUR_DOMAIN"
+```
+
+This will store a cert at `/tmp/tmc-cert.pem` and its private key
+at `/tmp/tmc-key.pem`.
+
+2. Create a `ClusterIssuer` from these certificates:
+
+```sh
+ytt -v certificate=$(base64 -w 0 < /tmp/tmc-cert.pem) \
+    -v key=$(base64 -w 0 < /tmp/tmc-key.pem) \
+    -f ./conf/cert-manager.yaml  |
+    kubectl --kubeconfig /tmp/kubeconfig apply -f -
+```
+
+3. `scp` the cert to the jumpbox.
+
+```sh
+scp -i /tmp/private_key /tmp/tmc-cert.pem \
+    $(./scripts/jumpbox.sh --ssh):/tmp/ca.pem
+```
+
+#### Deploy TMC
+
+##### Summary
+
+Basically the title!
+
+##### Instructions
+
+1. SSH into the jumpbox:
+
+```sh
+ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
+```
+
+2. Edit the values file you copied earlier into `/tmp/values.yaml`. Replace any
    values that say `change_me` or have a `$` prepended to them.
 
 > You can re-generate this values file by performing the steps below:
@@ -731,11 +787,14 @@ sudo snap install yq
 > yq -P . < /tmp/values.json > /tmp/values.yaml
 > ```
 
-7. Add Harbor's root certificate to the values file:
+3. Add the root certificates for Harbor and your self-signed CA to the values
+   file:
 
 ```sh
 cat >>/tmp/values.yaml <<-EOF
 trustedCAs:
+  local-ca.pem: |
+$(sed 's/^/    /g' /tmp/ca.pem)
   harbor.pem: |
 $(sed 's/^/    /g' /usr/local/share/ca-certificates/harbor-cert*.crt)
 EOF
