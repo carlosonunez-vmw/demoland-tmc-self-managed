@@ -1,13 +1,16 @@
 variable "domain_name" {
   description = "Your Route 53-managed domain name. Leave blank if you don't have this yet."
+  default     = ""
 }
 
 variable "harbor_cluster_ingress_elb" {
   description = "The FQDN of the Envoy load balancer that Harbor is backed by. Leave blank if you don't have this yet."
+  default     = ""
 }
 
 variable "tmc_local_cluster_ingress_elb_fqdn" {
   description = "The FQDN of the Envoy load balance that TMC services are backed by. Leave blank if you don't have this yet."
+  default     = ""
 }
 
 locals {
