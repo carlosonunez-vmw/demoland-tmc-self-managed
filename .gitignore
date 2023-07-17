@@ -3,3 +3,5 @@
 *.tfbackend
 .terraform
 .terraform.lock.hcl
+harbor-default-values.yaml
+errored.tfstate

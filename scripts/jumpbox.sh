@@ -10,6 +10,12 @@ ARGUMENTS
   --public-ip       Get the jumpbox's public IP
   --private-key     Get the jumpbox's private key in OpenSSH format.
   --ssh             Get SSH username and host information.
+  --ami-id          Get the jumpbox's AMI ID
+  --subnet-one      Get the first private subnet the jumpbox is located in.
+  --subnet-two      Get the second private subnet the jumpbox is located in.
+  --aws-region      Get the jumpbox's AWS region.
+  --key-name        Get the jumpbox's key name.
+  --vpc-id          Get the jumpbox's VPC ID.
 
 ENVIRONMENT VARIABLES
 
@@ -52,6 +58,38 @@ private_key() {
   _find_in_terraform_output '.jumpbox_private_key.value'
 }
 
+ami_id() {
+  _find_in_terraform_output '.ami_id.value'
+}
+
+subnet_one() {
+  _find_in_terraform_output '.subnet_1.value'
+}
+
+subnet_two() {
+  _find_in_terraform_output '.subnet_2.value'
+}
+
+public_subnet_one() {
+  _find_in_terraform_output '.public_subnet_1.value'
+}
+
+public_subnet_two() {
+  _find_in_terraform_output '.public_subnet_2.value'
+}
+
+aws_region() {
+  _find_in_terraform_output '.region.value'
+}
+
+key_name() {
+  _find_in_terraform_output '.key.value'
+}
+
+vpc_id() {
+  _find_in_terraform_output '.vpc_id.value'
+}
+
 print_ssh_user_and_host() {
   user=$(_find_in_terraform_output '.user.value') || return 1
   ip=$(public_ip) || return 1
@@ -67,6 +105,30 @@ case "$(tr '[:upper:]' '[:lower:]' <<< "$1")" in
     ;;
   --ssh)
     print_ssh_user_and_host
+    ;;
+  --ami-id)
+    ami_id
+    ;;
+  --subnet-one)
+    subnet_one
+    ;;
+  --subnet-two)
+    subnet_two
+    ;;
+  --public-subnet-one)
+    public_subnet_one
+    ;;
+  --public-subnet-two)
+    public_subnet_two
+    ;;
+  --aws-region)
+    aws_region
+    ;;
+  --key-name)
+    key_name
+    ;;
+  --vpc-id)
+    vpc_id
     ;;
   *)
     usage

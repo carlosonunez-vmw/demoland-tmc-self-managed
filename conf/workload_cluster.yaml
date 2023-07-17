@@ -1,4 +1,6 @@
 #@ load("@ytt:data", "data")
+#@ for i in range(0, int(data.values.num_clusters)):
+---
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
@@ -7,8 +9,8 @@ metadata:
     run.tanzu.vmware.com/resolve-tkr: ""
     tkg/plan: dev
   labels:
-    tkg.tanzu.vmware.com/cluster-name: #@ "tmc-test-worker-{}".format(data.values.cluster_idx)
-  name: #@ "tmc-test-worker-{}".format(data.values.cluster_idx)
+    tkg.tanzu.vmware.com/cluster-name: #@ "tmc-test-worker-{}".format(i)
+  name: #@ "tmc-test-worker-{}".format(i)
   namespace: default
 spec:
   clusterNetwork:
@@ -49,32 +51,33 @@ spec:
     - name: network
       value:
         subnets:
-        - az: us-east-2b
+        - az: us-east-2a
           private:
-            id: subnet-022577ee0737256a2
+            id: #@ data.values.subnet_1
           public:
-            id: subnet-0f8f244570fa2c918
+            id: #@ data.values.public_subnet_1
         vpc:
-          existingID: vpc-00daff73dbb477824
+          existingID: #@ data.values.vpc_id
     - name: identityRef
       value: {}
     - name: worker
       value:
-        instanceType: t2.2xlarge
+        instanceType: t3a.xlarge
         rootVolume:
           sizeGiB: 80
     - name: controlPlane
       value:
-        instanceType: t2.2xlarge
+        instanceType: t3a.xlarge
         rootVolume:
           sizeGiB: 80
     version: v1.24.10+vmware.1-tkg.2
     workers:
       machineDeployments:
       - class: tkg-worker
-        failureDomain: us-east-2b
+        failureDomain: us-east-2a
         metadata:
           annotations:
             run.tanzu.vmware.com/resolve-os-image: ami-region=us-east-2,os-name=ubuntu,os-arch=amd64
         name: md-0
         replicas: 1
+#@ end

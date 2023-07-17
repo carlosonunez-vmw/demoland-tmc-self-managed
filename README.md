@@ -92,6 +92,7 @@ changes.
 
    ```sh
    ./scripts/jumpbox.sh --private-key > /tmp/private_key
+   chmod 600 /tmp/private_key
    ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh) whoami
    ```
 
@@ -99,6 +100,56 @@ changes.
 
 > ✅ It will take a few seconds for `jumpbox.sh` to return a private key.
 > Subsequent runs should be almost immediate.
+
+#### Expand the root volume size, if needed
+
+##### Summary
+
+This guide uses the `t3a.large` EC2 instance size to provision the jumpbox.
+While the spec sheet for this instance type states that the root volume should
+be 16GB, it provisions 8GB for some reason.
+
+This section guides you through expanding the volume so that you can avoid `no
+space` errors during cluster provisioning.
+
+##### Instructions
+
+1. Get the volume ID of the jumpbox's root volume:
+
+```sh
+id=$(aws ec2 describe-instances --filter 'Name=tag:Name,Values=tkg-jumpbox' |
+    jq '.Reservations[].Instances[].BlockDeviceMappings[] | select(.DeviceName == "/dev/sda1") | .Ebs.VolumeId')
+```
+
+2. Confirm that this volume is 8GB.
+
+```sh
+aws ec2 describe-volumes --volume-ids "$id" | jq .Volumes[0].Size
+```
+
+If this returns `16` or higher, **continue to the next section**.
+
+3. Expand this volume to 16GB.
+
+```sh
+aws ec2 modify-volume --volume-id "$id" --size 16
+```
+
+4. SSH into the jumpbox.
+
+ ```sh
+ ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
+ ```
+
+5. Run the below to expand the filesystem on this disk to use the
+full 16GB.
+
+```sh
+sudo apt -y update
+sudo apt -y install cloud-utils
+sudo growpart /dev/nvme0n1 1
+sudo resize2fs /dev/nvme0n1p1
+```
 
 #### Prepare the jumpbox
 
@@ -109,21 +160,25 @@ fetching the Tanzu CLI bundle
 
 ##### Instructions
 
-> ✅ SSH into the jumpbox for all of the instructions below:
+> ✅ SSH into the jumpbox before running the instructions below:
 >
 > ```sh
 > ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
 > ```
 
-1. Mount the extra disk provided to the machine and configure `fstab` to
-   automount it on boot:
+1. Mount the extra disk provided to the machine, make its directory writable to
+   everyone, and configure `fstab` to automount it on boot:
 
     ```sh
+    sudo snap install jq
     sudo mkdir /mnt/extra
-    sudo parted --script -a optimal /dev/xvdh mklabel msdos -- \
+    disk=$(lsblk --json |
+        jq -r '.blockdevices[] | select(.mountpoint == null and .children? == null) | .name')
+    sudo parted --script -a optimal /dev/$disk mklabel msdos -- \
         mkpart primary ext4 0% 100% &&
-        sudo mkfs.ext4 /dev/xvdh &&
-        sudo mount -t ext4 /dev/xvdh /mnt/extra &&
+        sudo mkfs.ext4 /dev/$disk &&
+        sudo mount -t ext4 /dev/$disk /mnt/extra &&
+        sudo chmod 777 /mnt/extra &&
         sudo sh -c 'echo "LABEL=extra /mnt/extra ext4 defaults,discard 0 1" > /etc/fstab'
     ```
 
@@ -131,24 +186,35 @@ fetching the Tanzu CLI bundle
 
    ```sh
    sudo curl -Lo /usr/local/bin/vcc \
-       https://github.com/vmware-labs/vmware-customer-connect-cli/releases/download/v1.1.5/vcc-darwin-v1.1.5 &&
+       https://github.com/vmware-labs/vmware-customer-connect-cli/releases/download/v1.1.5/vcc-linux-v1.1.5 &&
        sudo chmod +x /usr/local/bin/vcc
    ```
+
+2. Store your VMware Customer Connect credentials as environment variables in
+   your session.
+
+   ```sh
+   export VMWARE_EMAIL="change-me"
+   export VMWARE_PASSWORD="change-me"
+   ```
+
+   > This will only get stored for as long as you are logged in. You'll need to
+   > do this again if you log out.
 
 2. Download the Tanzu CLI bundle:
 
    ```sh
-   vcc download -p vmware_tanzu_advanced_edition -s tkg -v 2.1.1 --user YOUR-VMWARE-EMAIL --pass YOUR-VMWARE-PASS -f tanzu-cli-bundle-linux-amd64.tar.gz -a -o /tmp &&
+   vcc download -p vmware_tanzu_advanced_edition -s tkg -v 2.1.1 --user "$VMWARE_EMAIL" --pass "$VMWARE_PASSWORD" -f tanzu-cli-bundle-linux-amd64.tar.gz -a -o /tmp &&
    tar -xvf /tmp/tanzu-cli-bundle-linux-amd64.tar.gz -C /tmp
    ```
 
 3. Download `kubectl`
 
    ```sh
-   vcc download -p vmware_tanzu_advanced_edition -s tkg -v 2.1.1 --user YOUR-VMWARE-EMAIL --pass YOUR-VMWARE-PASS -f kubectl-linux-v1.24.10+vmware.1.gz -a -o /tmp &&
+   vcc download -p vmware_tanzu_advanced_edition -s tkg -v 2.1.1 --user "$VMWARE_EMAIL" --pass "$VMWARE_PASSWORD" -f kubectl-linux-v1.24.10+vmware.1.gz -a -o /tmp &&
    pushd /tmp && gunzip kubectl-linux-v1.24.10+vmware.1.gz && popd
    chmod +x /tmp/kubectl* &&
-   mv /tmp/kubectl* /usr/local/bin/kubectl
+   sudo mv /tmp/kubectl* /usr/local/bin/kubectl
    ```
 
 4. Install the Tanzu CLI
@@ -175,8 +241,10 @@ fetching the Tanzu CLI bundle
 6. Install Docker and reboot the machine. SSH in again when it comes back up.
 
    ```sh
-   sudo sh -c 'apt -y update && apt -y install docker.io && \
-    adduser $USER docker && reboot'
+   sudo sh -c 'snap install docker && addgroup --system docker'
+   sudo adduser $USER docker
+   newgrp docker # Log into the Docker group that you've been added into
+   sudo sh -c 'snap disable docker && snap enable docker'
    ```
 
 7. Confirm that you can start a container.
@@ -186,6 +254,16 @@ fetching the Tanzu CLI bundle
    ```
 
    Your output should contain `Hello from Docker!`
+
+8. Create the IAM role that allows TKG to create AWS resources:
+
+   ```sh
+   tanzu mc permissions aws set
+   ```
+
+   Wait for the CloudFormation stack that does this to finish before moving on.
+
+9. Type `exit` twice to log out of the jumpbox.
 
 #### Deploy TKG Management Cluster
 
@@ -198,8 +276,17 @@ We're now ready to deploy TKG! Let's start with the management cluster.
 1. Create the management cluster from the jumpbox:
 
    ```sh
-   scp -i /tmp/private_key conf/management_cluster.yaml \
-    $(./scripts/jumpbox.sh --ssh) /tmp/cluster.yaml &&
+   ytt template --data-value ami_id=$(./scripts/jumpbox.sh --ami-id) \
+     --data-value subnet_1=$(./scripts/jumpbox.sh --subnet-one) \
+     --data-value subnet_2=$(./scripts/jumpbox.sh --subnet-two) \
+     --data-value public_subnet_1=$(./scripts/jumpbox.sh --public-subnet-one) \
+     --data-value public_subnet_2=$(./scripts/jumpbox.sh --public-subnet-two) \
+     --data-value region=$(./scripts/jumpbox.sh --aws-region) \
+     --data-value key=$(./scripts/jumpbox.sh --key-name) \
+     --data-value vpc_id=$(./scripts/jumpbox.sh --vpc-id) \
+     -f ./conf/management_cluster.yaml > /tmp/management_cluster.yaml
+   scp -i /tmp/private_key /tmp/management_cluster.yaml \
+    $(./scripts/jumpbox.sh --ssh):/tmp/cluster.yaml &&
    ssh -i /tmp/private_key $(./scripts/jumpbox.sh --ssh) \
     tanzu management-cluster create -f /tmp/cluster.yaml
    ```
@@ -240,12 +327,14 @@ Providers:
   capi-system                        cluster-api            CoreProvider            cluster-api   v1.2.8
 ```
 
+If it does, type `exit` to stop your SSH session.
+
 3. Copy the kubeconfig from the jumpbox into a temporary directory
  on your machine:
 
  ```sh
  scp -i /tmp/private_key \
-   $(./scripts/jumpbox.sh --ssh) /home/ubuntu/.kube/config \
+   $(./scripts/jumpbox.sh --ssh):/home/ubuntu/.kube/config \
    /tmp/kubeconfig
  ```
 
@@ -270,24 +359,35 @@ Now we're going to create the three workload clusters needed by TMC.
 
 ##### Instructions
 
-1. Copy the worker cluster `ytt` template to the jumpbox. This will create
-   a workload cluster in AWS using the `dev` plan with `t2.2xlarge` nodes.
+1. Create configurations for three workload clusters:
 
 ```sh
-scp -i /tmp/private_key \
-    ./conf/workload_cluster.yaml.tmpl
-    $(./scripts/jumpbox.sh --ssh) /tmp/cluster.yaml
+ytt template \
+  --data-value ami_id=$(./scripts/jumpbox.sh --ami-id)   \
+  --data-value subnet_1=$(./scripts/jumpbox.sh --subnet-one)   \
+  --data-value subnet_2=$(./scripts/jumpbox.sh --subnet-two)   \
+  --data-value region=$(./scripts/jumpbox.sh --aws-region)   \
+  --data-value key=$(./scripts/jumpbox.sh --key-name)   \
+  --data-value vpc_id=$(./scripts/jumpbox.sh --vpc-id) \
+  --data-value public_subnet_1=$(./scripts/jumpbox.sh --public-subnet-one) \
+  --data-value public_subnet_2=$(./scripts/jumpbox.sh --public-subnet-two) \
+  --data-value num_clusters=3 -f ./conf/workload_cluster.yaml > /tmp/workload_cluster.yaml
 ```
 
-2. Create three workload clusters:
+2. Apply the Kubernetes manifest:
 
 ```sh
-ssh -i /tmp/private_key \
-    $(./scripts/jumpbox.sh --ssh) \
-    bash -c 'for i in $(seq 1 3); do ytt template --data-value cluster_idx=$i -f /tmp/workload_cluster.yaml  > /tmp/cluster-$i.yaml && tanzu cluster create -f /tmp/cluster-$i.yaml -v 9; rm /tmp/cluster-$i.yaml; done'
+kubectl --kubeconfig /tmp/kubeconfig apply -f /tmp/workload_cluster.yaml
 ```
 
-3. Log into the management cluster and confirm that the clusters are running:
+3. SSH into the jumpbox.
+
+ ```sh
+ ssh -L 8080:localhost:8080 -i /tmp/private_key $(./scripts/jumpbox.sh --ssh)
+ ```
+
+
+4. Log into the management cluster and confirm that the clusters are running:
 
 ```sh
 tanzu login --kubeconfig /tmp/kubeconfig \
@@ -300,11 +400,44 @@ Output should look like this:
 
 ```
   NAME               NAMESPACE  STATUS    CONTROLPLANE  WORKERS  KUBERNETES         ROLES   PLAN  TKR
+  tmc-test-worker-0  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
   tmc-test-worker-1  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
   tmc-test-worker-2  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
-  tmc-test-worker-3  default    running   1/1           1/1      v1.24.10+vmware.1  <none>  dev   v1.24.10---vmware.1-tkg.2
 ```
 
+5. Save the kubeconfig contexts for each cluster into your Kubeconfig:
+
+```sh
+for i in $(seq 0 3)
+do tanzu cluster kubeconfig get tmc-test-worker-$i --admin
+done
+```
+
+6. Type `exit` to terminate the SSH session to the jumpbox.
+
+7. Retrieve the updated Kubeconfig:
+
+ ```sh
+ scp -i /tmp/private_key \
+   $(./scripts/jumpbox.sh --ssh):/home/ubuntu/.kube/config \
+   /tmp/kubeconfig
+ ```
+
+8. Confirm that you have the contexts for each worker in your Kubeconfig
+
+```sh
+kubectl --kubeconfig /tmp/kubeconfig config get-contexts
+```
+
+Your output should look like this:
+
+```
+CURRENT   NAME                                        CLUSTER             AUTHINFO                  NAMESPACE
+*         tmc-test-admin@tmc-test                     tmc-test            tmc-test-admin
+          tmc-test-worker-0-admin@tmc-test-worker-0   tmc-test-worker-0   tmc-test-worker-0-admin
+          tmc-test-worker-1-admin@tmc-test-worker-1   tmc-test-worker-1   tmc-test-worker-1-admin
+          tmc-test-worker-2-admin@tmc-test-worker-2   tmc-test-worker-2   tmc-test-worker-2-admin
+```
 
 ### Install TMC
 
@@ -344,7 +477,7 @@ The TMC Local Installer bundles all of the images that it uses into the
 tarball to better facilitate airgapped installations.
 
 We'll now need to deploy these images into a Harbor registry running in
-`tmc-test-worker-1`.
+`tmc-test-worker-0`.
 
 But first, we need to install Harbor. Let's do that now.
 
@@ -358,11 +491,11 @@ export YOUR_DOMAIN="your-domain-here"
 
 > ✅ Not sure what this is? Consult "About DNS" [above](#about-dns).
 
-1. Switch to `tmc-test-worker-3`:
+1. Switch to `tmc-test-worker-2`:
 
 ```sh
 kubectl --kubeconfig /tmp/kubeconfig \
-    config use-context tmc-test-worker-1-admin@tmc-test-worker-1
+    config use-context tmc-test-worker-0-admin@tmc-test-worker-0
 ```
 
 2. Create a namespace to hold our Carvel package registries.
@@ -431,14 +564,14 @@ tanzu package install --kubeconfig /tmp/kubeconfig \
     -v 1.20.2+vmware.2-tkg.1
     --values-file ./conf/contour.values
 ```
-3. Repeat the steps above, but on `tmc-test-worker-3`
+3. Repeat the steps above, but on `tmc-test-worker-2`
 
 ```sh
 kubectl --kubeconfig /tmp/kubeconfig \
-    config use-context tmc-test-worker-3-admin@tmc-test-worker-3
+    config use-context tmc-test-worker-2-admin@tmc-test-worker-2
 ```
 
-Switch back to `tmc-test-worker-1` once done.
+Switch back to `tmc-test-worker-0` once done.
 
 > ⚠️  **DO NOT ** install Contour!
 
@@ -455,31 +588,27 @@ Output should look like this:
 tanzu-package-repo-global  harbor.tanzu.vmware.com                       harbor
 ```
 
-4. Get the available versions you can install:
+4. Get the latest version of Harbor that can be installed and save it as a
+   variable.
 
 ```sh
-tanzu package available list harbor.tanzu.vmware.com \
+VERSION=$(tanzu package available list \
     -A --kubeconfig /tmp/kubeconfig |
-    grep harbor
+    grep harbor |
+    head -1 |
+    awk '{print $5}')
 ```
 
+Running `echo $VERSION` should return something like `2.6.1+vmware.1-tkg.1`.
 
-5. Generate default values for that version and save them
-   to `/tmp/harbor.values`, setting the hostname along the way:
 
-```sh
-tanzu package available get \
-    harbor.tanzu.vmware.com/2.6.1+vmware.1-tkg.1 \
-    -n tanzu-package-repo-global \
-    --kubeconfig /tmp/kubeconfig \
-    --default-values-file-output /tmp/harbor.values
-sed -i "s/^# hostname:/hostname: harbor.$YOUR_DOMAIN/" /tmp/harbor.values
-```
+> ⚠️  If `sed` gives you an error here, use `sed -i ''` instead.
 
-6. Add credentials; change anything that says `change_me`:
+5. Create configuration values for Harbor; change anything that says `change_me`:
 
 ```sh
-cat >>/tmp/harbor.values <<-EOF
+cat >>/tmp/values.yaml <<-EOF
+hostname: harbor.$YOUR_DOMAIN
 harborAdminPassword: change_me
 secretKey: change_me_must_be_16_chars_long
 core:
@@ -491,15 +620,16 @@ registry:
   secret: change_me
 database:
   password: change_me
+EOF
 ```
 
 > ✅ Perform any other configuration changes you'd like by opening
-> /tmp/harbor.values in your favorite editor.
+> /tmp/values.yaml in your favorite editor.
 
 6. Install the package:
 
 ```sh
-tanzu package install --values-file /tmp/harbor.values \
+tanzu package install --values-file /tmp/values.yaml \
     --kubeconfig /tmp/kubeconfig \
     -n tanzu-package-repo-global \
     harbor \
@@ -523,24 +653,24 @@ and have Terraform manage them.
 ##### Instructions
 
 1. Get the FQDN address of the `LoadBalancer` object the Envoy
-   Ingress Controller reverse proxy is bound to in `tmc-test-worker-1`
+   Ingress Controller reverse proxy is bound to in `tmc-test-worker-0`
 
 ```sh
 export HARBOR_FQDN=$(kubectl --kubeconfig /tmp/kubeconfig get svc envoy  \
     -n tanzu-system-ingress \
-    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 ```
 
 2. Confirm that `$HARBOR_FQDN` is not empty.
 
 ```sh
-test -n "$HARBOR_FQDN"  && echo "Your IP is: $HARBOR_FQDN"
+test -n "$HARBOR_FQDN"  && echo "Your hostname is: $HARBOR_FQDN"
 ```
 
 Your output **MUST** look like the below to continue:
 
 ```
-Your IP is: 13.58.119.162,13.58.198.149
+Your hostname is: a04235a6e63134deda12009954c99240-632662137.us-east-2.elb.amazonaws.com
 ```
 
 3. Re-run Terraform:
@@ -829,17 +959,17 @@ To do that, we'll re-run Terraform one more time so that it can do this.
 
 ##### Instructions
 
-1. Get the FQDN of both Envoy ELBs at `tmc-test-worker-1` and
-   `tmc-test-worker-3`:
+1. Get the FQDN of both Envoy ELBs at `tmc-test-worker-0` and
+   `tmc-test-worker-2`:
 
 ```sh
 export HARBOR_FQDN=$(kubectl --kubeconfig /tmp/kubeconfig \
-    --context tmc-test-worker-1-admin@tmc-test-worker-1 \
+    --context tmc-test-worker-0-admin@tmc-test-worker-0 \
     get svc envoy  \
     -n tanzu-system-ingress \
     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 export TMC_LOCAL_FQDN=$(kubectl --kubeconfig /tmp/kubeconfig \
-    --context tmc-test-worker-3-admin@tmc-test-worker-3 \
+    --context tmc-test-worker-2-admin@tmc-test-worker-2 \
     get svc contour-envoy  \
     -n tmc-local \
     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
