@@ -49,6 +49,28 @@ create_tanzu_cli_dir() {
   test -d "$TANZU_CLI_DIRECTORY" || mkdir -p "$TANZU_CLI_DIRECTORY"
 }
 
+install_vcc() {
+  >&2 echo "===> Installing the VMware Customer Connect download tool into your computer; enter password when/if prompted."
+   sudo curl -Lo /usr/local/bin/vcc \
+       https://github.com/vmware-labs/vmware-customer-connect-cli/releases/download/v1.1.5/vcc-linux-v1.1.5 &&
+       sudo chmod +x /usr/local/bin/vcc
+}
+
+download_tmc_from_customer_connect() {
+  >&2 echo "===> Downloading TMC SM; this might take a few minutes."
+  vcc get files -p vmware_tanzu_mission_control_self_managed  \
+    -s tmc-sm \
+    -v '1.0' \
+    --user "$VMWARE_EMAIL" \
+    --pass "$VMWARE_PASSWORD" \
+    -o "${TANZU_CLI_DIRECTORY}/tmc.tar"
+}
+
+extract_tmc() {
+  test -d "${TANZU_CLI_DIRECTORY}/tmc" && mkdir -p "${TANZU_CLI_DIRECTORY}/tmc"
+  tar -xf "${TANZU_CLI_DIRECTORY}/tmc.tar" -C "${TANZU_CLI_DIRECTORY}/tmc"
+}
+
 install_kapp_controller() {
   kapp deploy -a kc --yes -f https://github.com/vmware-tanzu/carvel-kapp-controller/releases/latest/download/release.yml
 }
@@ -58,7 +80,9 @@ tanzu_cli_tar_present || {
   create_tanzu_cli_dir &&
   download_tanzu_cli_with_pivnet "$token" && exit 1;
 }
+install_kapp_controller &&
 extract_tanzu_cli_tar &&
   install_tanzu_cli &&
   install_tanzu_plugins &&
-  install_kapp_controller
+  install_vcc &&
+  download_tmc_from_customer_connect

@@ -13,6 +13,7 @@ services:
       - AWS_REGION=us-east-2
       - TF_VAR_domain_name=${DOMAIN_NAME}
       - TF_VAR_customer_name=${CUSTOMER_NAME}
+      - TF_VAR_product_name=${PRODUCT_NAME}
   terraform-init:
     extends: terraform
     entrypoint: bash

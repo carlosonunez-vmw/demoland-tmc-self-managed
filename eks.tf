@@ -2,10 +2,20 @@ data "aws_caller_identity" "self" {}
 
 data "aws_region" "current" {}
 
+variable "product_name" {
+  description = "The Tanzu product for which this cluster is being built."
+}
+
+resource "random_string" "cluster_prefix" {
+  length  = 8
+  upper   = false
+  special = false
+}
+
 module "eks" {
   source                         = "terraform-aws-modules/eks/aws"
   version                        = "19.15.3"
-  cluster_name                   = "tap-cluster"
+  cluster_name                   = "${random_string.cluster_prefix.result}-${var.product_name}-cluster"
   cluster_version                = "1.27"
   cluster_endpoint_public_access = true
   cluster_addons = {
@@ -48,10 +58,20 @@ module "eks" {
     eks_control_plane_to_kapp_controller = {
       description                = "Cluster API to kapp-controller"
       protocol                   = "tcp"
-      from_port                  = 10250
-      to_port                    = 10250
+      from_port                  = 10350
+      to_port                    = 10350
       source_node_security_group = true
       type                       = "ingress"
+    }
+  }
+  node_security_group_additional_rules = {
+    eks_control_plane_to_kapp_controller = {
+      description                   = "Cluster API to kapp-controller"
+      protocol                      = "tcp"
+      from_port                     = 10350
+      to_port                       = 10350
+      source_cluster_security_group = true
+      type                          = "ingress"
     }
   }
 }

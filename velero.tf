@@ -5,5 +5,5 @@ resource "random_string" "velero_target_prefix" {
 }
 
 resource "aws_s3_bucket" "velero_target" {
-  bucket = "${random_string.velero_target_prefix.result}-tmc-cluster-backups"
+  bucket = "${random_string.velero_target_prefix.result}-${module.eks.cluster_name}-backups"
 }

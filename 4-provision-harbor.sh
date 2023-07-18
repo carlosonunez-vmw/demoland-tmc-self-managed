@@ -2,7 +2,7 @@
 #shellcheck disable=SC2046
 export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
-TAP_VERSION=1.5.2
+TMC_VERSION=1.0.0
 install_harbor() {
   echo "\
 apiVersion: v1
@@ -14,7 +14,7 @@ metadata:
     --into-ns tanzu-system-registry \
     --yes \
     -f <(helm template harbor bitnami/harbor -n tanzu-system-registry --version "$2" -f - <<-EOF
-adminPassword: supersecret
+adminPassword: "$3"
 externalURL: https://harbor.$1
 service:
   type: ClusterIP
@@ -54,24 +54,25 @@ add_bitnami_helm_repo() {
   helm repo add bitnami https://charts.bitnami.com/bitnami
 }
 
-create_tap_project() {
-  curl -u admin:supersecret \
+create_tmc_project() {
+  curl -u admin:"$2" \
     "https://harbor.$1/api/v2.0/projects" \
      -X POST \
      -H "Content-Type: application/json" \
      -H "Accept: application/json" \
-    --data-raw '{"project_name":"tap-'$TAP_VERSION'","metadata":{"public":"true"},"storage_limit":-1,"registry_id":null}'
+    --data-raw '{"project_name":"tmc-'$TMC_VERSION'","metadata":{"public":"true"},"storage_limit":-1,"registry_id":null}'
   if test "$?" -ne 0
   then
-    >&2 echo "WARNING: Unable to create tap-$TAP_VERSION project in Harbor at harbor.$1; do so manually."
+    >&2 echo "WARNING: Unable to create tmc-$TMC_VERSION project in Harbor at harbor.$1; do so manually."
   fi
 }
 
 domain="$(domain)" || exit 1
+harbor_password="$(docker-compose run --rm terraform output -raw harbor_password)" || exit 1
 add_bitnami_helm_repo || exit 1
 chart_version=$(helm search repo bitnami/harbor --versions --output json |
   jq -r '.[] | select(.app_version == "2.6.1") | .version' |
   sort -r |
   head -1) &&
-  install_harbor "$domain" "$chart_version" &&
-  create_tap_project "$domain"
+  install_harbor "$domain" "$chart_version" "$harbor_password" &&
+  create_tmc_project "$domain" "$harbor_password"

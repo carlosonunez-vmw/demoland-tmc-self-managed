@@ -22,9 +22,13 @@ resource "okta_app_oauth" "tmc" {
   grant_types = [
     "authorization_code",
     "refresh_token",
-    "password"
+    "client_credentials",
+    "implicit"
   ]
   redirect_uris = [
     "https://pinniped-supervisor.${local.dns_tmc_domain}/provider/pinniped/callback"
   ]
+  response_types         = ["token", "code"]
+  refresh_token_rotation = "ROTATE"
+  refresh_token_leeway   = 60
 }

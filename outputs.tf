@@ -42,3 +42,7 @@ output "okta_app_client_secret" {
 output "domain" {
   value = local.dns_tmc_domain
 }
+
+output "harbor_password" {
+  value = resource.random_string.harbor_password.result
+}
