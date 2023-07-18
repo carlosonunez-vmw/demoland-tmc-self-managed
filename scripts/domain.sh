@@ -1,4 +1,5 @@
 domain() {
+  >&2 echo "===> Fetching subzone domain name; stand by"
   docker-compose --log-level ERROR run --rm terraform output -raw domain
 }
 

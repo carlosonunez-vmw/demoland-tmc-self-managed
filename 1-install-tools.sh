@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 TAP_VERSION=1.5.2
+TMC_VERSION=1.0.0
 TANZU_CLI_DIRECTORY="$(dirname "$(realpath "$0")")/.data/tanzu"
-TANZU_CLI_PIVNET_PACKAGE="tanzu-cli-tap-${TAP_VERSION}"
-TANZU_CLI_TAR_FILE="${TANZU_CLI_DIRECTORY}/tanzu-framework-darwin-amd64.tar"
+TMC_INSTALLER_TAR_FILE="tmc-self-managed-${TMC_VERSION}.tar"
+export VCC_USER="${VMWARE_CUSTOMER_CONNECT_EMAIL?Please provide VMWARE_EMAIL in your .env}"
+export VCC_PASS="${VMWARE_CUSTOMER_CONNECT_PASSWORD?Please provide VMWARE_PASSWORD in your .env}"
 
 tanzu_cli_tar_present() {
   find "$TANZU_CLI_DIRECTORY" -name 'tanzu-framework-darwin*' &>/dev/null
@@ -13,11 +16,11 @@ extract_tanzu_cli_tar() {
 
   find "$TANZU_CLI_DIRECTORY" -name 'tanzu-framework-darwin*' \
     -exec tar -xvf {} -C "$TANZU_CLI_DIRECTORY" \; &&
-  tar -xvf "$TANZU_CLI_TAR_FILE" -C "$TANZU_CLI_DIRECTORY" &&
     touch "$TANZU_CLI_DIRECTORY/cli-extracted"
 }
 
 download_tanzu_cli_with_pivnet() {
+  set -x
   pivnet login --api-token="$1"  || return 1
   pivnet product-files -p tanzu-application-platform -r "$TAP_VERSION" --format=json | \
      jq '.[] | select(.name | contains("framework-bundle-mac")) | .id' | \
@@ -26,6 +29,8 @@ download_tanzu_cli_with_pivnet() {
 }
 
 install_tanzu_cli() {
+  &>/dev/null which tanzu && return 0
+
   trap 'popd &>/dev/null' INT HUP EXIT RETURN
   &>/dev/null pushd "$TANZU_CLI_DIRECTORY" || return 1
   cli_bin=$(find cli -type f -name tanzu-core-darwin_amd64 | head -1)
@@ -40,9 +45,12 @@ install_tanzu_cli() {
 }
 
 install_tanzu_plugins() {
+  test -f "${TANZU_CLI_DIRECTORY}/.plugins-synced" && return 0
+
   trap 'popd &>/dev/null' INT HUP EXIT RETURN
   &>/dev/null pushd "$TANZU_CLI_DIRECTORY" || return 1
   TANZU_CLI_NO_INIT=true tanzu plugin install --local cli all
+  touch "${TANZU_CLI_DIRECTORY}/.plugins-synced"
 }
 
 create_tanzu_cli_dir() {
@@ -50,28 +58,36 @@ create_tanzu_cli_dir() {
 }
 
 install_vcc() {
+  &>/dev/null which vcc && return 0
+
   >&2 echo "===> Installing the VMware Customer Connect download tool into your computer; enter password when/if prompted."
    sudo curl -Lo /usr/local/bin/vcc \
-       https://github.com/vmware-labs/vmware-customer-connect-cli/releases/download/v1.1.5/vcc-linux-v1.1.5 &&
+       https://github.com/vmware-labs/vmware-customer-connect-cli/releases/download/v1.1.5/vcc-darwin-v1.1.5 &&
        sudo chmod +x /usr/local/bin/vcc
 }
 
 download_tmc_from_customer_connect() {
+  test -f "${TANZU_CLI_DIRECTORY}/$TMC_INSTALLER_TAR_FILE" && return 0
+
   >&2 echo "===> Downloading TMC SM; this might take a few minutes."
-  vcc get files -p vmware_tanzu_mission_control_self_managed  \
+  vcc download -p vmware_tanzu_mission_control_self_managed  \
     -s tmc-sm \
-    -v '1.0' \
-    --user "$VMWARE_EMAIL" \
-    --pass "$VMWARE_PASSWORD" \
-    -o "${TANZU_CLI_DIRECTORY}/tmc.tar"
+    -v "1.0" \
+    -f "$TMC_INSTALLER_TAR_FILE" \
+    -o "${TANZU_CLI_DIRECTORY}" \
+    --accepteula
 }
 
 extract_tmc() {
-  test -d "${TANZU_CLI_DIRECTORY}/tmc" && mkdir -p "${TANZU_CLI_DIRECTORY}/tmc"
-  tar -xf "${TANZU_CLI_DIRECTORY}/tmc.tar" -C "${TANZU_CLI_DIRECTORY}/tmc"
+  test -f "${TANZU_CLI_DIRECTORY}/tmc/tmc-sm" && return 0
+
+  test -d "${TANZU_CLI_DIRECTORY}/tmc" || mkdir -p "${TANZU_CLI_DIRECTORY}/tmc"
+  tar -xf "${TANZU_CLI_DIRECTORY}/$TMC_INSTALLER_TAR_FILE" -C "${TANZU_CLI_DIRECTORY}/tmc"
 }
 
 install_kapp_controller() {
+  &>/dev/null kubectl get deployment kapp-controller -n kapp-controller && return 0
+
   kapp deploy -a kc --yes -f https://github.com/vmware-tanzu/carvel-kapp-controller/releases/latest/download/release.yml
 }
 
@@ -85,4 +101,5 @@ extract_tanzu_cli_tar &&
   install_tanzu_cli &&
   install_tanzu_plugins &&
   install_vcc &&
-  download_tmc_from_customer_connect
+  download_tmc_from_customer_connect &&
+  extract_tmc
