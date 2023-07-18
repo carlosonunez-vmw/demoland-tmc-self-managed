@@ -15,7 +15,7 @@ services:
     extends: terraform
     entrypoint: bash
     environment:
-      DEFAULT_TERRAFORM_STATE_BUCKET_REGION: us-east-2
+      DEFAULT_TERRAFORM_STATE_S3_BUCKET_REGION: us-east-2
     command:
       - -c
       - "./scripts/create_backend.sh && \

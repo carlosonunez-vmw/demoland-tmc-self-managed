@@ -5,6 +5,10 @@ terraform {
       version = "4.67.0"
       source  = "hashicorp/aws"
     }
+    okta = {
+      version = "4.1.0"
+      source  = "okta/okta"
+    }
   }
 }
 
@@ -13,3 +17,5 @@ provider "aws" {
     key_prefixes = ["kubernetes.io/"]
   }
 }
+
+provider "okta" {}
