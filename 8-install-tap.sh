@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
 source "$(dirname "$0")/include/profiles.sh"
 TAP_VERSION=1.5.2
 
-
+domain="$(domain)" || exit 1
+export DOMAIN_NAME="$domain"
 install_tap() {
   template=$(ytt -v domain_name="$DOMAIN_NAME" \
     -v tap_version="$TAP_VERSION" \

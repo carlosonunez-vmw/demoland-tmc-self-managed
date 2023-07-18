@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
+domain="$(domain)" || exit 1
+export DOMAIN_NAME="$domain"
 export INSTALL_REGISTRY_USERNAME="${INSTALL_REGISTRY_USERNAME?Please define INSTALL_REGISTRY_USERNAME in .env}"
 export INSTALL_REGISTRY_PASSWORD="${INSTALL_REGISTRY_PASSWORD?Please define INSTALL_REGISTRY_PASSWORD in .env}"
-export DOMAIN_NAME="${DOMAIN_NAME?Please define DOMAIN_NAME in .env}"
 export DEV_NAMESPACE="${DEV_NAMESPACE?Please define DEV_NAMESPACE in .env}"
 
 registry_secret=$(kubectl create secret docker-registry registry-credentials \

@@ -11,7 +11,7 @@ output "aws_region" {
 }
 
 output "zone_id" {
-  value = data.aws_route53_zone.zone.id
+  value = resource.aws_route53_zone.zone.id
 }
 
 output "external_dns_role_arn" {
@@ -31,9 +31,14 @@ output "cluster_autoscaler_role_arn" {
 }
 
 output "okta_app_client_id" {
-  value = resource.okta_app_auth.tmc.client_id
+  value = resource.okta_app_oauth.tmc.client_id
 }
 
 output "okta_app_client_secret" {
-  value = resource.okta_app.auth.tmc.client_secret
+  value     = resource.okta_app_oauth.tmc.client_secret
+  sensitive = true
+}
+
+output "domain" {
+  value = local.dns_tmc_domain
 }

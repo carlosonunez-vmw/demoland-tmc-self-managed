@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2046
 export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
 usage() {
   cat <<-EOF
 Downloads TAP packages into your registry, as recommended by the docs.
@@ -15,11 +16,12 @@ EOF
   echo "$1"
   exit "${2:-0}"
 }
+domain="$(domain)" || exit 1
+export DOMAIN_NAME="$domain"
 IMGPKG_APP_PATH="$(dirname "$(realpath "$0")")/.data/tanzu/cluster-essentials/imgpkg"
 export TARGET_REPOSITORY=tap
 export INSTALL_REGISTRY_USERNAME="${INSTALL_REGISTRY_USERNAME?Please define INSTALL_REGISTRY_USERNAME in .env}"
 export INSTALL_REGISTRY_PASSWORD="${INSTALL_REGISTRY_PASSWORD?Please define INSTALL_REGISTRY_PASSWORD in .env}"
-export DOMAIN_NAME="${DOMAIN_NAME?Please define DOMAIN_NAME in .env}"
 export TAP_VERSION=1.5.2
 
 login_to_local_regsitry() {

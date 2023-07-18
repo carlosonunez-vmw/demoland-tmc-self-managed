@@ -1,4 +1,6 @@
-data "okta_user" "me" {}
+data "okta_user" "me" {
+  user_id = "me"
+}
 
 resource "okta_group" "admin" {
   name        = "tmc:admin"
@@ -15,6 +17,8 @@ resource "okta_group_memberships" "self" {
 }
 
 resource "okta_app_oauth" "tmc" {
+  type  = "web"
+  label = "TMC Self Managed"
   grant_types = [
     "authorization_code",
     "refresh_token",

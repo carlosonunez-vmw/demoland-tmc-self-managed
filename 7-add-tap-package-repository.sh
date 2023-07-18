@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
 TAP_VERSION=1.5.2
-DOMAIN_NAME="${DOMAIN_NAME?Please define DOMAIN_NAME in your .env}"
+domain="$(domain)" || exit 1
+export DOMAIN_NAME="$domain"
 
 create_namespace() {
   echo "\

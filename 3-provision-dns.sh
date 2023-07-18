@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 EXTERNAL_DNS_VERSION=0.13.4
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
 install_external_dns() {
   kapp deploy -a external-dns -n tanzu-package-repo-global \
     --yes \
@@ -30,9 +31,7 @@ add_bitnami_helm_repo() {
   helm repo add bitnami https://charts.bitnami.com/bitnami
 }
 
-domain="${DOMAIN_NAME}"
-test -z "$domain" &&
-  domain="${1?Please provide the domain to use for fronting external-dns.}"
+domain="$(domain)"
 region=$(docker-compose run --rm terraform output -raw aws_region) || exit 1
 zone_id=$(docker-compose run --rm terraform output -raw zone_id) || exit 1
 role_arn=$(docker-compose run --rm terraform output -raw external_dns_role_arn) || exit 1

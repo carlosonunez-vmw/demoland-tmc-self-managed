@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
 CERT_MANAGER_VERSION=1.7.2+vmware.1-tkg.1
 HARBOR_VERSION=2.6.1+vmware.1-tkg.1
 TANZU_PACKAGES_VERSION=1.6.1
@@ -86,9 +88,7 @@ annotate_cert_manager_with_irsa_ref() {
 
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 email="${EMAIL_ADDRESS?Please provide EMAIL_ADDRESS}"
-domain="${DOMAIN_NAME}"
-test -z "$domain" &&
-  domain="${1?Please provide the domain to use for fronting Harbor.}"
+domain="$(domain)" || exit 1
 region=$(docker-compose run --rm terraform output -raw aws_region) || exit 1
 iam_role=$(docker-compose run --rm terraform output -raw certmanager_role_arn) || exit 1
 create_pkg_namespace  &&

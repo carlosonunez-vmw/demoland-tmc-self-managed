@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #shellcheck disable=SC2046
 export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
 TAP_VERSION=1.5.2
 install_harbor() {
   echo "\
@@ -66,9 +67,7 @@ create_tap_project() {
   fi
 }
 
-domain="${DOMAIN_NAME}"
-test -z "$domain" &&
-  domain="${1?Please provide the domain to use for fronting Harbor.}"
+domain="$(domain)" || exit 1
 add_bitnami_helm_repo || exit 1
 chart_version=$(helm search repo bitnami/harbor --versions --output json |
   jq -r '.[] | select(.app_version == "2.6.1") | .version' |
