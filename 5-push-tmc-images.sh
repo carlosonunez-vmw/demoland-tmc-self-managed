@@ -2,6 +2,7 @@
 # shellcheck disable=SC2046
 export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
+source "$(dirname "$0")/scripts/terraform_output.sh"
 domain="$(domain)" || exit 1
 export DOMAIN_NAME="$domain"
 IMGPKG_APP_PATH="$(dirname "$(realpath "$0")")/.data/tanzu/cluster-essentials/imgpkg"
@@ -20,7 +21,7 @@ ensure_qemu_interpreter_for_amd64_cpu_exists_on_arm_systems() {
   docker run --rm --privileged aptman/qus -s -- -p x86_64
 }
 
-harbor_password=$(docker-compose --log-level ERROR run --rm terraform output -raw harbor_password) || exit 1
+harbor_password=$(tf_output harbor_password) || exit 1
 trap 'ret=$?; popd; exit $?' INT HUP EXIT
 
 pushd "${TANZU_CLI_DIRECTORY}/tmc"
@@ -38,4 +39,5 @@ docker run --rm \
   docker \
   push-images harbor --project "harbor.${DOMAIN_NAME}/tmc-${TMC_VERSION}" \
     --username admin \
-    --password "$harbor_password"
+    --password "$harbor_password" \
+    --enable-imgpkg-debug-logs

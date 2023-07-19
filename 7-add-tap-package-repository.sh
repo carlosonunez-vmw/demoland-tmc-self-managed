@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
+source "$(dirname "$0")/scripts/terraform_output.sh"
 TMC_VERSION=1.0.0
 domain="$(domain)" || exit 1
 export DOMAIN_NAME="$domain"
@@ -28,7 +29,7 @@ add_package_repository() {
     --namespace tmc-install
 }
 
-harbor_password="$(docker-compose run --rm terraform output -raw harbor_password)" || exit 1
+harbor_password="$(tf_output harbor_password)" || exit 1
 
 create_namespace &&
   create_registry_secret "$harbor_password" &&

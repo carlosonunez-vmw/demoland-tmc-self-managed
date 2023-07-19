@@ -2,6 +2,7 @@
 #shellcheck disable=SC2046
 export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
+source "$(dirname "$0")/scripts/terraform_output.sh"
 TMC_VERSION=1.0.0
 install_harbor() {
   echo "\
@@ -68,7 +69,7 @@ create_tmc_project() {
 }
 
 domain="$(domain)" || exit 1
-harbor_password="$(docker-compose run --rm terraform output -raw harbor_password)" || exit 1
+harbor_password="$(tf_output harbor_password)" || exit 1
 add_bitnami_helm_repo || exit 1
 chart_version=$(helm search repo bitnami/harbor --versions --output json |
   jq -r '.[] | select(.app_version == "2.6.1") | .version' |
