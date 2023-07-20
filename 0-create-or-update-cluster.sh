@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/scripts/terraform_output.sh"
 DOCKER_COMPOSE="docker-compose --log-level ERROR"
-{ $DOCKER_COMPOSE run --rm terraform-init &&
+{ delete_tf_output_cache &&
+  $DOCKER_COMPOSE run --rm terraform-init &&
   $DOCKER_COMPOSE run --rm terraform-apply; } || exit 1
 
 "$(dirname "$0")/98-update-eks-kubeconfig.sh" || exit 1

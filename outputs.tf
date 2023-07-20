@@ -46,3 +46,6 @@ output "domain" {
 output "harbor_password" {
   value = resource.random_string.harbor_password.result
 }
+output "keycloak_password" {
+  value = resource.random_string.keycloak_password.result
+}

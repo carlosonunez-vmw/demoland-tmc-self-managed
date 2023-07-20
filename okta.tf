@@ -18,7 +18,7 @@ resource "okta_group_memberships" "self" {
 
 resource "okta_app_oauth" "tmc" {
   type  = "web"
-  label = "TMC Self Managed"
+  label = "TMC Self Managed Keycloak Provider"
   grant_types = [
     "authorization_code",
     "refresh_token",
@@ -26,7 +26,7 @@ resource "okta_app_oauth" "tmc" {
     "implicit"
   ]
   redirect_uris = [
-    "https://pinniped-supervisor.${local.dns_tmc_domain}/provider/pinniped/callback"
+    "http://keycloak.${local.dns_tmc_domain}/realms/tanzu-products/broker/okta-integration/endpoint"
   ]
   response_types         = ["token", "code"]
   refresh_token_rotation = "ROTATE"
