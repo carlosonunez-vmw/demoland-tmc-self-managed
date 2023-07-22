@@ -4,7 +4,7 @@ source "$(dirname "$0")/scripts/domain.sh"
 source "$(dirname "$0")/scripts/terraform_output.sh"
 OKTA_ORG_NAME="${OKTA_ORG_NAME?Please define OKTA_ORG_NAME in your .env}"
 OKTA_BASE_URL="${OKTA_BASE_URL?Please define OKTA_BASE_URL in your .env}"
-KEYCLOAK_CONFIG_DIR="$(dirname "$0")/.data/tanzu"
+KEYCLOAK_CONFIG_DIR="$(dirname "$0")/.data/tanzu/keycloak"
 KEYCLOAK_VERSION=21.1.2
 
 install_keycloak() {
@@ -36,14 +36,21 @@ add_bitnami_helm_repo() {
 }
 
 log_into_keycloak() {
-  test -f "$KEYCLOAK_CONFIG_DIR/kcadm.config" && return 0
+  if test -f "$KEYCLOAK_CONFIG_DIR/kcadm.config"
+  then
+    now=$(date +%s)
+    expiration_time=$(jq -r '.endpoints | to_entries[] | .value.master.expiresAt' \
+      "$KEYCLOAK_CONFIG_DIR/kcadm.config") &&
+      test "$now" -lt "$expiration_time" && return 0
+
+  fi
 
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
     config credentials \
-    --server "http://keycloak.$1" \
+    --server "https://keycloak.$1" \
     --realm master \
     --user admin \
     --password "$2"
@@ -98,7 +105,7 @@ create_tmc_client() {
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    get clients/tmc-sm -r tanzu-products >/dev/null && return 0
+    get clients -q id=tmc-sm -r tanzu-products >/dev/null && return 0
 
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
@@ -114,7 +121,8 @@ create_tmc_client() {
     "https://pinniped-supervisor.$1/provider/pinniped/callback"
   ],
   "serviceAccountsEnabled": false,
-  "standardFlowEnabled": true
+  "standardFlowEnabled": true,
+  "publicClient": false
 }
 CLIENT
 )"
@@ -125,6 +133,8 @@ keycloak_password="$(tf_output keycloak_password)" || exit 1
 okta_client_id="$(tf_output okta_app_client_id)" || exit 1
 okta_client_secret="$(tf_output okta_app_client_secret)" || exit 1
 add_bitnami_helm_repo || exit 1
+shared_svcs_cluster_arn=$(tf_output shared_svcs_cluster_arn) || exit 1
+kubectl config use-context "$shared_svcs_cluster_arn"
 chart_version=$(helm search repo bitnami/keycloak --versions --output json |
   jq -r '.[] | select(.app_version == "'$KEYCLOAK_VERSION'") | .version' |
   sort -r |

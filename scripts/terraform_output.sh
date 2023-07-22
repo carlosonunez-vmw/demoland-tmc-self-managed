@@ -26,5 +26,6 @@ $(dirname "$0")/0-create-or-update-cluster.sh to add it to your Terraform state.
 }
 
 delete_tf_output_cache() {
+  test -f "$OUTPUT_CACHE" || return 0
   rm "$OUTPUT_CACHE"
 }

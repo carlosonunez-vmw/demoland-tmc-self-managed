@@ -11,26 +11,19 @@ create_namespace() {
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: tmc-install
+  name: tmc-local
 " | kapp deploy -n tanzu-package-repo-global -a tmc-${TMC_VERSION}-config -f - --yes || return 1
-}
-
-create_registry_secret() {
-  tanzu secret registry add tmc-registry \
-    --username admin \
-    --password "$1" \
-    --server "harbor.$DOMAIN_NAME" \
-    --export-to-all-namespaces --yes --namespace tmc-install
 }
 
 add_package_repository() {
   tanzu package repository add tanzu-tmc-repository  \
-    --url "harbor.${DOMAIN_NAME}/tmc-${TMC_VERSION}/package-repository" \
-    --namespace tmc-install
+    --url "harbor.${DOMAIN_NAME}/tmc-${TMC_VERSION}/package-repository:${TMC_VERSION}" \
+    --namespace tmc-local
 }
 
-harbor_password="$(tf_output harbor_password)" || exit 1
-
+tmc_cluster_arn=$(tf_output tmc_cluster_arn)
+shared_svcs_cluster_arn=$(tf_output shared_svcs_cluster_arn)
+kubectl config use-context "$tmc_cluster_arn"
+trap 'rc=$?; kubectl config use-context '"$shared_svcs_cluster_arn"'; exit $rc' INT HUP EXIT
 create_namespace &&
-  create_registry_secret "$harbor_password" &&
   add_package_repository

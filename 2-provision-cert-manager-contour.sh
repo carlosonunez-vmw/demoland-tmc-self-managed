@@ -3,16 +3,15 @@ export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/terraform_output.sh"
 source "$(dirname "$0")/scripts/domain.sh"
 CERT_MANAGER_VERSION=1.7.2+vmware.1-tkg.1
-HARBOR_VERSION=2.6.1+vmware.1-tkg.1
 TANZU_PACKAGES_VERSION=1.6.1
 CONTOUR_VERSION=1.20.2+vmware.2-tkg.1
 
 create_pkg_namespace() {
-  kubectl create ns tanzu-package-repo-global || true
+  kubectl --context "$KUBECTX" create ns tanzu-package-repo-global || true
 }
 
 add_tanzu_standard_pkg_repo() {
-  2>/dev/null kubectl get pkgr vmware -n tanzu-package-repo-global ||
+  2>/dev/null kubectl --context "$KUBECTX" get pkgr vmware -n tanzu-package-repo-global ||
   tanzu package repository add vmware -n tanzu-package-repo-global \
     --url "projects.registry.vmware.com/tkg/packages/standard/repo:v$TANZU_PACKAGES_VERSION"
 }
@@ -34,29 +33,8 @@ install_contour() {
       --values-file "$(dirname "$0")/conf/contour.values"
 }
 
-install_harbor() {
-  tanzu package install -n tanzu-package-repo-global harbor \
-    -p harbor.tanzu.vmware.com \
-    -v "$HARBOR_VERSION" \
-    --values-file <(cat <<-EOF
-hostname: harbor.$1
-harborAdminPassword: supersecret
-secretKey: abcdef012345678a
-core:
-  secret: supersecret
-  xsrfKey: abcdef012345678aabcdef012345678a
-jobservice:
-  secret: supersecret
-registry:
-  secret: supersecret
-database:
-  password: supersecret
-EOF
-)
-}
-
 install_cluster_issuer() {
-  kubectl apply -f - <<-EOF
+  kubectl --context "$KUBECTX" apply -f - <<-EOF
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -79,23 +57,32 @@ EOF
 
 wait_for_cluster_issuer_to_become_ready() {
   >&2 echo "INFO: Waiting for the Let's Encrypt ClusterIssuer to be validated"
-  kubectl wait --for condition=Ready=true --timeout=10m clusterissuer/letsencrypt-prod
+  kubectl --context "$KUBECTX" wait --for condition=Ready=true --timeout=10m clusterissuer/letsencrypt-prod
 }
 
 annotate_cert_manager_with_irsa_ref() {
-  kubectl annotate sa -n cert-manager cert-manager "eks.amazonaws.com/role-arn=$1"  &&
-    kubectl rollout restart -n cert-manager deployment cert-manager
+  kubectl --context "$KUBECTX" annotate sa -n cert-manager cert-manager "eks.amazonaws.com/role-arn=$1"  &&
+    kubectl --context "$KUBECTX" rollout restart -n cert-manager deployment cert-manager
 }
 
-export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 email="${EMAIL_ADDRESS?Please provide EMAIL_ADDRESS}"
 domain="$(domain)" || exit 1
 region=$(tf_output aws_region) || exit 1
-iam_role=$(tf_output certmanager_role_arn) || exit 1
-create_pkg_namespace  &&
-  add_tanzu_standard_pkg_repo  &&
-  install_cert_manager  &&
-  annotate_cert_manager_with_irsa_ref "$iam_role" &&
-  install_contour &&
-  install_cluster_issuer "$domain" "$email" "$region" &&
-  wait_for_cluster_issuer_to_become_ready
+shared_svcs_cluster_arn=$(tf_output shared_svcs_cluster_arn) || return 1
+tmc_cluster_arn=$(tf_output tmc_cluster_arn) || return 1
+trap 'rc=$?; kubectl config use-context '"$shared_svcs_cluster_arn"'; exit $rc' INT HUP EXIT
+for context_data in "$shared_svcs_cluster_arn;arn" "$tmc_cluster_arn;arn_tmc"
+do
+  output_suffix="$(cut -f2 -d ';' <<< "$context_data")"
+  context="$(cut -f1 -d ';' <<< "$context_data")"
+  iam_role=$(tf_output "certmanager_role_$output_suffix") || exit 1
+  kubectl config use-context "$context"
+  create_pkg_namespace  &&
+    add_tanzu_standard_pkg_repo  &&
+    install_cert_manager  &&
+    annotate_cert_manager_with_irsa_ref "$iam_role" &&
+    install_cluster_issuer "$domain" "$email" "$region" &&
+    wait_for_cluster_issuer_to_become_ready
+done
+kubectl config use-context "$shared_svcs_cluster_arn"
+KUBECTX="$shared_svcs_cluster_arn" install_contour

@@ -71,6 +71,8 @@ create_tmc_project() {
 domain="$(domain)" || exit 1
 harbor_password="$(tf_output harbor_password)" || exit 1
 add_bitnami_helm_repo || exit 1
+shared_svcs_cluster_arn=$(tf_output shared_svcs_cluster_arn) || exit 1
+kubectl config use-context "$shared_svcs_cluster_arn"
 chart_version=$(helm search repo bitnami/harbor --versions --output json |
   jq -r '.[] | select(.app_version == "2.6.1") | .version' |
   sort -r |

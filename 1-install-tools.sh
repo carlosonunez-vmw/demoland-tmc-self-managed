@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+source "$(dirname "$0")/scripts/terraform_output.sh"
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 TAP_VERSION=1.5.2
 TMC_VERSION=1.0.0
@@ -86,9 +87,14 @@ extract_tmc() {
 }
 
 install_kapp_controller() {
-  &>/dev/null kubectl get deployment kapp-controller -n kapp-controller && return 0
-
-  kapp deploy -a kc --yes -f https://github.com/vmware-tanzu/carvel-kapp-controller/releases/latest/download/release.yml
+  shared_svcs_cluster_arn=$(tf_output shared_svcs_cluster_arn) || return 1
+  tmc_cluster_arn=$(tf_output tmc_cluster_arn) || return 1
+  for context in "$shared_svcs_cluster_arn" "$tmc_cluster_arn"
+  do
+    &>/dev/null kubectl --context "$context" get deployment kapp-controller -n kapp-controller ||
+      kapp deploy --kubeconfig-context "$context" \
+        -a kc --yes -f https://github.com/vmware-tanzu/carvel-kapp-controller/releases/latest/download/release.yml
+  done
 }
 
 token="${1?Please provide a Pivotal Network token}"
