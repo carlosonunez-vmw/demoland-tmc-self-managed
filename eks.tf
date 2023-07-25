@@ -1,52 +1,259 @@
-variable "create_eks_cluster" {
-  description = "Create a test EKS cluster to join to TMC Local. Disabled by default"
-  default     = 0
+data "aws_caller_identity" "self" {}
+
+data "aws_region" "current" {}
+
+variable "product_name" {
+  description = "The Tanzu product for which this cluster is being built."
 }
 
-module "eks_vpc" {
-  count   = var.create_eks_cluster == 0 ? 0 : 1
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "4.0.1"
-
-  name = "eks-land"
-  cidr = "172.16.0.0/16"
-
-  private_subnets = ["172.16.0.0/24",
-    "172.16.1.0/24",
-  "172.16.2.0/24"]
-  public_subnets = ["172.16.3.0/24",
-    "172.16.4.0/24",
-  "172.16.5.0/24"]
-  enable_nat_gateway = true
-  azs                = slice(sort(data.aws_availability_zones.available.names), 0, 3)
+resource "random_string" "cluster_prefix" {
+  length  = 8
+  upper   = false
+  special = false
 }
+
 module "eks" {
-  count   = var.create_eks_cluster == 0 ? 0 : 1
-  source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.13.1"
-
-  cluster_name    = "tmc-eks-test"
-  cluster_version = "1.24"
-
+  source                         = "terraform-aws-modules/eks/aws"
+  version                        = "19.15.3"
+  cluster_name                   = "${random_string.cluster_prefix.result}-${var.product_name}-cluster"
+  cluster_version                = "1.27"
   cluster_endpoint_public_access = true
-
   cluster_addons = {
     coredns = {
+      most_recent       = true
+      resolve_conflicts = "OVERWRITE"
+    }
+    vpc-cni = {
       most_recent = true
     }
     kube-proxy = {
       most_recent = true
     }
-    vpc-cni = {
+    aws-ebs-csi-driver = {
       most_recent = true
     }
   }
-
-  vpc_id                   = module.eks_vpc[0].vpc_id
-  subnet_ids               = module.eks_vpc[0].private_subnets
-  control_plane_subnet_ids = module.eks_vpc[0].private_subnets
-
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnets
+  control_plane_subnet_ids = module.vpc.public_subnets
   eks_managed_node_group_defaults = {
-    instance_types = ["t2.2xlarge", "t2.4xlarge"]
+    instance_types = ["t3a.large"]
+    capacity_type  = "SPOT"
+    desired_size   = 3
+    min_size       = 3
+  }
+  eks_managed_node_groups = {
+    default = {
+      max_size = 8
+    }
+  }
+  aws_auth_users = [
+    {
+      userarn  = data.aws_caller_identity.self.arn
+      username = "self"
+      groups   = ["system:masters"]
+    }
+  ]
+  cluster_security_group_additional_rules = {
+    eks_control_plane_to_kapp_controller = {
+      description                = "Cluster API to kapp-controller"
+      protocol                   = "tcp"
+      from_port                  = 10350
+      to_port                    = 10350
+      source_node_security_group = true
+      type                       = "ingress"
+    }
+  }
+  node_security_group_additional_rules = {
+    eks_control_plane_to_kapp_controller = {
+      description                   = "Cluster API to kapp-controller"
+      protocol                      = "tcp"
+      from_port                     = 10350
+      to_port                       = 10350
+      source_cluster_security_group = true
+      type                          = "ingress"
+    }
+  }
+}
+
+module "eks_for_tmc" {
+  source                         = "terraform-aws-modules/eks/aws"
+  version                        = "19.15.3"
+  cluster_name                   = "${random_string.cluster_prefix.result}-${var.product_name}-tmc-cluster"
+  cluster_version                = "1.27"
+  cluster_endpoint_public_access = true
+  cluster_addons = {
+    coredns = {
+      most_recent       = true
+      resolve_conflicts = "OVERWRITE"
+    }
+    vpc-cni = {
+      most_recent = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+    aws-ebs-csi-driver = {
+      most_recent = true
+    }
+  }
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnets
+  control_plane_subnet_ids = module.vpc.public_subnets
+  eks_managed_node_group_defaults = {
+    instance_types = ["t3a.large"]
+    capacity_type  = "SPOT"
+    desired_size   = 3
+    min_size       = 3
+  }
+  eks_managed_node_groups = {
+    default = {
+      max_size = 8
+    }
+  }
+  aws_auth_users = [
+    {
+      userarn  = data.aws_caller_identity.self.arn
+      username = "self"
+      groups   = ["system:masters"]
+    }
+  ]
+  cluster_security_group_additional_rules = {
+    eks_control_plane_to_kapp_controller = {
+      description                = "Cluster API to kapp-controller"
+      protocol                   = "tcp"
+      from_port                  = 10350
+      to_port                    = 10350
+      source_node_security_group = true
+      type                       = "ingress"
+    }
+  }
+  node_security_group_additional_rules = {
+    eks_control_plane_to_kapp_controller = {
+      description                   = "Cluster API to kapp-controller"
+      protocol                      = "tcp"
+      from_port                     = 10350
+      to_port                       = 10350
+      source_cluster_security_group = true
+      type                          = "ingress"
+    }
+  }
+}
+
+module "ebs_irsa_role" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name             = "ebs-csi"
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
+}
+
+module "certmanager_irsa_role" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name                  = "certmanager"
+  attach_cert_manager_policy = true
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["cert-manager:cert-manager"]
+    }
+  }
+}
+
+module "externaldns_irsa_role" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name                     = "externaldns"
+  attach_external_dns_policy    = true
+  external_dns_hosted_zone_arns = [aws_route53_zone.zone.arn]
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["default:external-dns-sa"]
+    }
+  }
+}
+
+module "clusterautoscaler_irsa_role" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name                        = "cluster-autoscaler"
+  attach_cluster_autoscaler_policy = true
+  external_dns_hosted_zone_arns    = [aws_route53_zone.zone.arn]
+  cluster_autoscaler_cluster_names = [module.eks.cluster_name]
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:cluster-autoscaler"]
+    }
+  }
+}
+
+module "ebs_irsa_role_tmc_cluster" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name             = "ebs-csi-tmc-cluster"
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks_for_tmc.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
+}
+
+module "certmanager_irsa_role_tmc_cluster" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name                  = "certmanager-tmc-cluster"
+  attach_cert_manager_policy = true
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks_for_tmc.oidc_provider_arn
+      namespace_service_accounts = ["cert-manager:cert-manager"]
+    }
+  }
+}
+
+module "externaldns_irsa_role_tmc_cluster" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name                     = "externaldns-tmc-cluster"
+  attach_external_dns_policy    = true
+  external_dns_hosted_zone_arns = [aws_route53_zone.zone.arn]
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks_for_tmc.oidc_provider_arn
+      namespace_service_accounts = ["default:external-dns-sa"]
+    }
+  }
+}
+
+module "clusterautoscaler_irsa_role_tmc_cluster" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name                        = "cluster-autoscaler-tmc-cluster"
+  attach_cluster_autoscaler_policy = true
+  external_dns_hosted_zone_arns    = [aws_route53_zone.zone.arn]
+  cluster_autoscaler_cluster_names = [module.eks_for_tmc.cluster_name]
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks_for_tmc.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:cluster-autoscaler"]
+    }
   }
 }

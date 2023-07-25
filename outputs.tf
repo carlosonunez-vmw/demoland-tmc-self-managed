@@ -1,45 +1,85 @@
-output "jumpbox_ip" {
-  value = module.jumpbox.public_ip
-}
-
-output "jumpbox_private_key" {
-  value     = module.key_pair.private_key_openssh
-  sensitive = true
-}
-
-output "user" {
-  value     = "ubuntu"
-  sensitive = true
-}
-
-output "ami_id" {
-  value = local.ami_id
-}
-
 output "vpc_id" {
   value = module.vpc.vpc_id
 }
 
-output "subnet_1" {
-  value = module.vpc.private_subnets[0]
+output "cluster_name" {
+  value = module.eks.cluster_name
 }
 
-output "subnet_2" {
-  value = module.vpc.private_subnets[1]
+output "tmc_cluster_name" {
+  value = module.eks_for_tmc.cluster_name
 }
 
-output "public_subnet_1" {
-  value = module.vpc.public_subnets[0]
+output "shared_svcs_cluster_arn" {
+  value = module.eks.cluster_arn
 }
 
-output "public_subnet_2" {
-  value = module.vpc.public_subnets[1]
+output "tmc_cluster_arn" {
+  value = module.eks_for_tmc.cluster_arn
 }
 
-output "region" {
+output "aws_region" {
   value = data.aws_region.current.name
 }
 
-output "key" {
-  value = module.key_pair.key_pair_name
+output "zone_id" {
+  value = resource.aws_route53_zone.zone.id
+}
+
+output "external_dns_role_arn" {
+  value = module.externaldns_irsa_role.iam_role_arn
+}
+
+output "certmanager_role_arn" {
+  value = module.certmanager_irsa_role.iam_role_arn
+}
+
+output "ebs_csi_controller_role_arn" {
+  value = module.ebs_irsa_role.iam_role_arn
+}
+
+output "cluster_autoscaler_role_arn" {
+  value = module.clusterautoscaler_irsa_role.iam_role_arn
+}
+
+output "okta_app_client_id" {
+  value = resource.okta_app_oauth.tmc.client_id
+}
+
+output "okta_app_client_secret" {
+  value     = resource.okta_app_oauth.tmc.client_secret
+  sensitive = true
+}
+
+output "domain" {
+  value = local.dns_tmc_domain
+}
+
+output "harbor_password" {
+  value = resource.random_string.harbor_password.result
+}
+output "keycloak_password" {
+  value = resource.random_string.keycloak_password.result
+}
+output "minio_password" {
+  value = resource.random_string.minio_password.result
+}
+output "postgres_password" {
+  value = resource.random_string.postgres_password.result
+}
+
+output "external_dns_role_arn_tmc" {
+  value = module.externaldns_irsa_role_tmc_cluster.iam_role_arn
+}
+
+output "certmanager_role_arn_tmc" {
+  value = module.certmanager_irsa_role_tmc_cluster.iam_role_arn
+}
+
+output "ebs_csi_controller_role_arn_tmc" {
+  value = module.ebs_irsa_role_tmc_cluster.iam_role_arn
+}
+
+output "cluster_autoscaler_role_arn_tmc" {
+  value = module.clusterautoscaler_irsa_role_tmc_cluster.iam_role_arn
 }

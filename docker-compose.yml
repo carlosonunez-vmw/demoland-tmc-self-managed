@@ -11,16 +11,21 @@ services:
       - AWS_SECRET_ACCESS_KEY
       - AWS_SESSION_TOKEN
       - AWS_REGION=us-east-2
+      - TF_VAR_domain_name=${DOMAIN_NAME}
+      - TF_VAR_customer_name=${CUSTOMER_NAME}
+      - TF_VAR_product_name=${PRODUCT_NAME}
   terraform-init:
     extends: terraform
     entrypoint: bash
     environment:
-      DEFAULT_TERRAFORM_STATE_BUCKET_REGION: us-east-2
+      DEFAULT_TERRAFORM_STATE_S3_BUCKET_REGION: us-east-2
     command:
       - -c
-      - "./scripts/create_backend.sh && \
+      - "{ test -z ${REINIT} && test -f /work/.terraform/initialized; } && exit 0; \
+         ./scripts/create_backend.sh && \
          git config --global --add safe.directory '*' && \
-         terraform init -backend-config=/tmp/conf.tfbackend"
+         terraform init -backend-config=/tmp/conf.tfbackend && \
+         touch /work/.terraform/initialized"
   terraform-plan:
     extends: terraform
     command:
@@ -33,12 +38,6 @@ services:
       - -input=false
       - -auto-approve
       - -compact-warnings
-  terraform-apply-dns:
-    extends: terraform-apply
-    environment:
-      - TF_VAR_domain_name=${DOMAIN_NAME}
-      - TF_VAR_harbor_cluster_ingress_elb=${HARBOR_FQDN}
-      - TF_VAR_tmc_local_cluster_ingress_elb_fqdn=${TMC_LOCAL_FQDN}
   terraform-output:
     extends: terraform
     command:

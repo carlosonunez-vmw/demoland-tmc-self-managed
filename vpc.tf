@@ -6,7 +6,7 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "4.0.1"
 
-  name = "tkg-land"
+  name = "tkg-tap-land"
   cidr = "172.16.0.0/16"
 
   private_subnets = ["172.16.0.0/24",
