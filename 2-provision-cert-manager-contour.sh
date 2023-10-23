@@ -65,6 +65,24 @@ annotate_cert_manager_with_irsa_ref() {
     kubectl --context "$KUBECTX" rollout restart -n cert-manager deployment cert-manager
 }
 
+# Since we don't have a way of adding annotations to the instance of
+# cert-manager installed by this Tanzu package, annotations are
+# added after cert-manager is installed.
+#
+# Since this isn't the desired state that kapp knew about during the install,
+# kapp undoes these changes. This prevents cert-manager from receiving the
+# AWS IAM role to request via EKS IRSA, which prevents DNS challenges
+# from succeeding and new Certificates issued by cert-manager to never
+# be issued.
+#
+# This function tells kapp to not reconcile this app so that this doesn't
+# happen.
+pause_cert_manager_kapp_reconciliation_so_annotations_remain() {
+  kubectl -n tanzu-package-repo-global patch pkgi cert-manager \
+    --type merge \
+    --patch '{"spec":{"paused":true}}'
+}
+
 email="${EMAIL_ADDRESS?Please provide EMAIL_ADDRESS}"
 domain="$(domain)" || exit 1
 region=$(tf_output aws_region) || exit 1
@@ -80,6 +98,7 @@ do
   create_pkg_namespace  &&
     add_tanzu_standard_pkg_repo  &&
     install_cert_manager  &&
+    pause_cert_manager_kapp_reconciliation_so_annotations_remain &&
     annotate_cert_manager_with_irsa_ref "$iam_role" &&
     install_cluster_issuer "$domain" "$email" "$region" &&
     wait_for_cluster_issuer_to_become_ready
