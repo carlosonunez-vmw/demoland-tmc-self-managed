@@ -157,7 +157,7 @@ module "ebs_irsa_role" {
 module "certmanager_irsa_role" {
   source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
 
-  role_name                  = "certmanager"
+  role_name                  = "certmanager-shared-svcs-cluster"
   attach_cert_manager_policy = true
 
   oidc_providers = {
@@ -171,7 +171,7 @@ module "certmanager_irsa_role" {
 module "externaldns_irsa_role" {
   source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
 
-  role_name                     = "externaldns"
+  role_name                     = "externaldns-shared-svcs-cluster"
   attach_external_dns_policy    = true
   external_dns_hosted_zone_arns = [aws_route53_zone.zone.arn]
 
@@ -186,7 +186,7 @@ module "externaldns_irsa_role" {
 module "clusterautoscaler_irsa_role" {
   source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
 
-  role_name                        = "cluster-autoscaler"
+  role_name                        = "cluster-autoscaler-shared-svcs-cluster"
   attach_cluster_autoscaler_policy = true
   external_dns_hosted_zone_arns    = [aws_route53_zone.zone.arn]
   cluster_autoscaler_cluster_names = [module.eks.cluster_name]
@@ -202,7 +202,7 @@ module "clusterautoscaler_irsa_role" {
 module "ebs_irsa_role_tmc_cluster" {
   source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
 
-  role_name             = "ebs-csi-tmc-cluster"
+  role_name             = "ebs-csi-tmc-cluster-shared-svcs-cluster"
   attach_ebs_csi_policy = true
 
   oidc_providers = {
