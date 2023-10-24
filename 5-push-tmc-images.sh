@@ -8,7 +8,6 @@ export DOMAIN_NAME="$domain"
 export TARGET_REPOSITORY=tap
 export INSTALL_REGISTRY_USERNAME="${INSTALL_REGISTRY_USERNAME?Please define INSTALL_REGISTRY_USERNAME in .env}"
 export INSTALL_REGISTRY_PASSWORD="${INSTALL_REGISTRY_PASSWORD?Please define INSTALL_REGISTRY_PASSWORD in .env}"
-export DOCKER_DEFAULT_PLATFORM=linux/amd64
 TANZU_CLI_DIRECTORY="$(dirname "$(realpath "$0")")/.data/tanzu"
 TMC_VERSION=1.0.0
 BASE_IMAGE=tmc-sm
@@ -38,6 +37,7 @@ pushd "${TANZU_CLI_DIRECTORY}/tmc"
 # Instead of standing up an entire jumpbox just to run this installer,
 # run it in Docker, and ensure that it uses an x86-64 image.
 ensure_qemu_interpreter_for_amd64_cpu_exists_on_arm_systems || exit 1
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
 entrypoint=tmc-sm
 if test -n "$USE_CUSTOM_TMC_LOCAL_INSTALLER"
 then
