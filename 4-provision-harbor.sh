@@ -56,6 +56,7 @@ add_bitnami_helm_repo() {
 }
 
 create_tmc_project() {
+  >&2 echo "===> Creating a Harbor project for TMC images"
   curl -u admin:"$2" \
     "https://harbor.$1/api/v2.0/projects" \
      -X POST \
