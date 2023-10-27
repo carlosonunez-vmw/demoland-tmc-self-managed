@@ -6,6 +6,7 @@ OKTA_ORG_NAME="${OKTA_ORG_NAME?Please define OKTA_ORG_NAME in your .env}"
 OKTA_BASE_URL="${OKTA_BASE_URL?Please define OKTA_BASE_URL in your .env}"
 KEYCLOAK_CONFIG_DIR="$(dirname "$0")/.data/tanzu/keycloak"
 KEYCLOAK_VERSION=21.1.2
+KEYCLOAK_TMC_REALM=tanzu-products
 
 install_keycloak() {
   echo "\
@@ -36,6 +37,7 @@ add_bitnami_helm_repo() {
 }
 
 log_into_keycloak() {
+  >&2 echo "===> Logging into Keycloak"
   if test -f "$KEYCLOAK_CONFIG_DIR/kcadm.config"
   then
     now=$(date +%s)
@@ -59,28 +61,30 @@ log_into_keycloak() {
 }
 
 create_keycloak_realm() {
+  >&2 echo "===> Creating Keycloak realm for TMC Self Managed stuff"
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    get realms/tanzu-products >/dev/null && return 0
+    get realms/"$KEYCLOAK_TMC_REALM" >/dev/null && return 0
 
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    create realms -s realm=tanzu-products -s enabled=true
+    create realms -s realm="$KEYCLOAK_TMC_REALM" -s enabled=true
 }
 
 create_additional_oauth_scopes() {
-  for scope in groups email tenant_id
+  >&2 echo "===> Creating required OAuth scopes for TMC in realm"
+  for scope in groups email tenant_id full_name
   do
     docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
         --rm \
         -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
         bitnami/keycloak \
         get client-scopes \
-        -r tanzu-products |
+        -r "$KEYCLOAK_TMC_REALM" |
           jq -e '.[] | select(.name == "'"$scope"'") | .id?' >/dev/null && continue
     json="$(cat <<-EOF
 {
@@ -104,42 +108,125 @@ EOF
         bitnami/keycloak \
         create client-scopes \
         -b "$json" \
-        -r tanzu-products
+        -r "$KEYCLOAK_TMC_REALM"
   done
   set +x
 }
 
+add_hardcoded_claims_to_email_and_tenant_id_scopes() {
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  tenant_id_claim_json="$(cat <<-EOF
+{
+  "protocol": "openid-connect",
+  "protocolMapper": "oidc-hardcoded-claim-mapper",
+  "name": "tenant_id",
+  "config": {
+    "claim.name": "tenant_id",
+    "claim.value": "tmc-sm-tenant",
+    "jsonType.label": "String",
+    "id.token.claim": "true",
+    "access.token.claim": "true",
+    "userinfo.token.claim": false,
+    "access.tokenResponse.claim": "true"
+  }
+}
+EOF
+)"
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  full_name_claim_json="$(cat <<-EOF
+{
+  "name": "full_name",
+  "protocol": "openid-connect",
+  "protocolMapper": "oidc-full-name-mapper",
+  "consentRequired": false,
+  "config": {
+    "id.token.claim": "true",
+    "access.token.claim": "true",
+    "userinfo.token.claim": "true"
+  }
+}
+EOF
+)"
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  groups_claim_json="$(cat <<-EOF
+{
+  "protocol": "openid-connect",
+  "protocolMapper": "oidc-group-membership-mapper",
+  "name": "groups",
+  "config": {
+    "claim.name": "groups",
+    "full.path": false,
+    "id.token.claim": "true",
+    "access.token.claim": "true",
+    "userinfo.token.claim": "true"
+  }
+}
+EOF
+)"
+  scopes=$(docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
+      --rm \
+      -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
+      bitnami/keycloak \
+      get client-scopes -r "$KEYCLOAK_TMC_REALM") || return 1
+  for scope in tenant_id full_name groups
+  do
+    id=$(jq -e '.[] | select(.name == "'"$scope"'") | .id' <<< "$scopes" | tr -d '"') || continue
+    >&2 echo "====> Adding claim to OAuth scope '$scope'"
+    existing_scopes=$(jq -r '.[] | select(.id == "'"$id"'") | .protocolMappers[]? | select(.name == "'"$scope"'") | .name?' <<< "$scopes")
+    if test -z "$existing_scopes" || test "$existing_scopes" == 'null'
+    then
+      json_var="${scope}_claim_json"
+      json="${!json_var}" || return 1
+      docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
+        --rm \
+        -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
+        bitnami/keycloak \
+        create "client-scopes/$id/protocol-mappers/models" \
+        -r "$KEYCLOAK_TMC_REALM" \
+        -b "$json" || return 1
+    else
+      >&2 echo "=====> Claim already added."
+      continue
+    fi
+  done
+}
+
 create_keycloak_roles() {
+  >&2 echo "====> Creating required TMC roles"
   for role in 'admin' 'members'
   do
     docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
       --rm \
       -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
       bitnami/keycloak \
-      get roles -r tanzu-products | jq -e '.[] | select(.name == "tmc:'"$role"'") | .id?' >/dev/null  && continue
+      get roles -r "$KEYCLOAK_TMC_REALM" | jq -e '.[] | select(.name == "tmc:'"$role"'") | .id?' >/dev/null  && continue
     description="$(sed -E 's/ss\.$/s./' <<< "TMC ${role^}s.")"
     docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
       --rm \
       -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
       bitnami/keycloak \
-      create roles -r tanzu-products -s name="tmc:$role" -s description="$description" || return 1
+      create roles -r "$KEYCLOAK_TMC_REALM" -s name="tmc:$role" -s description="$description" || return 1
   done
 
 }
 
 configure_okta_saml_provider() {
+  >&2 echo "====> Setting up Keycloak/Okta Integration"
   discovery_endpoint="https://${OKTA_ORG_NAME}.${OKTA_BASE_URL}/oauth2/default/.well-known/openid-configuration?client_id=$1"
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    get realms/tanzu-products/identity-provider/instances/okta-integration >/dev/null && return 0
+    get realms/"$KEYCLOAK_TMC_REALM"/identity-provider/instances/okta-integration >/dev/null && return 0
 
   config=$(docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    create realms/tanzu-products/identity-provider/import-config  \
+    create realms/"$KEYCLOAK_TMC_REALM"/identity-provider/import-config  \
       -s fromUrl="$discovery_endpoint" \
       -s providerId=oidc \
       -o) || return 1
@@ -153,16 +240,17 @@ configure_okta_saml_provider() {
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    create realms/tanzu-products/identity-provider/instances  \
+    create realms/"$KEYCLOAK_TMC_REALM"/identity-provider/instances  \
     -b "$payload"
 }
 
 create_okta_integration_admin_mapper() {
+  >&2 echo "====> Setting up mapper to make all Okta users admins of TMC (sorry)"
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
       --rm \
       -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
       bitnami/keycloak \
-      get identity-provider/instances/okta-integration/mappers -r tanzu-products |
+      get identity-provider/instances/okta-integration/mappers -r "$KEYCLOAK_TMC_REALM" |
         jq -e '.[] | select(.name == "tmc:admin") | .id?' >/dev/null && return 0
 
   json="$(cat <<-EOF
@@ -185,22 +273,23 @@ EOF
     -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
     bitnami/keycloak create identity-provider/instances/okta-integration/mappers \
     -b "$json" \
-    -r tanzu-products || return 1
+    -r "$KEYCLOAK_TMC_REALM" || return 1
 }
 
 create_tmc_client() {
+  >&2 echo "===> Creating TMC Self Managed OAuth client in Keycloak"
   ids=$(docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    get clients -q clientId=tmc-sm -r tanzu-products) >/dev/null || return 1
+    get clients -q clientId=tmc-sm -r "$KEYCLOAK_TMC_REALM") >/dev/null || return 1
   test -n "$ids" && test "$ids" != "[ ]" && return 0
 
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    create clients -r tanzu-products -b "$(cat <<-CLIENT
+    create clients -r "$KEYCLOAK_TMC_REALM" -b "$(cat <<-CLIENT
 {
   "clientId": "tmc-sm",
   "name": "TMC Self Managed Client",
@@ -218,33 +307,34 @@ CLIENT
 }
 
 add_oauth_scopes_to_tmc_client() {
+  >&2 echo "====> Adding Keycloak OAuth scopes to newly-created OAuth client"
   client_id=$(docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
     bitnami/keycloak \
-    get clients -q clientId=tmc-sm -r tanzu-products -F id --format csv |
+    get clients -q clientId=tmc-sm -r "$KEYCLOAK_TMC_REALM" -F id --format csv |
       tr -d '"') >/dev/null || return 1
-  default_scopes="$(docker run \
+  default_client_scopes="$(docker run \
     --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
-    bitnami/keycloak get clients/$client_id/default-client-scopes \
-    -r tanzu-products)" || return 1
+    bitnami/keycloak get "clients/$client_id/default-client-scopes" \
+    -r "$KEYCLOAK_TMC_REALM")" || return 1
   all_scopes="$(docker run \
     --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
     -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
     bitnami/keycloak get client-scopes \
-    -r tanzu-products \
+    -r "$KEYCLOAK_TMC_REALM" \
     -F id,name)" || return 1
-  for scope in groups email tenant_id
+  for scope in groups email tenant_id full_name
   do
     scope_id=$(jq -r '.[] | select(.name == "'"$scope"'") | .id' <<< "$all_scopes")
-    jq -e '.[] | select(.id == "'"$scope_id"'") | .id?' <<< "$default_scopes" >/dev/null && continue
+    jq -e '.[] | select(.id == "'"$scope_id"'") | .id?' <<< "$default_client_scopes" >/dev/null && continue
     docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
       --rm \
       -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
-      bitnami/keycloak create "clients/$client_id/default-client-scopes/$scope_id" -r tanzu_products || return 1
+      bitnami/keycloak update "clients/$client_id/default-client-scopes/$scope_id" -r "$KEYCLOAK_TMC_REALM" || return 1
   done
 
 }
@@ -264,6 +354,7 @@ chart_version=$(helm search repo bitnami/keycloak --versions --output json |
   log_into_keycloak "$domain" "$keycloak_password" &&
   create_keycloak_realm "$domain" &&
   create_additional_oauth_scopes &&
+  add_hardcoded_claims_to_email_and_tenant_id_scopes &&
   create_keycloak_roles "$domain" &&
   configure_okta_saml_provider "$okta_client_id" "$okta_client_secret" &&
   create_okta_integration_admin_mapper &&
