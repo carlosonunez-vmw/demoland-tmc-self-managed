@@ -159,9 +159,9 @@ EOF
   "config": {
     "claim.name": "groups",
     "full.path": false,
-    "id.token.claim": "true",
+    "id.token.claim": "false",
     "access.token.claim": "true",
-    "userinfo.token.claim": "true"
+    "userinfo.token.claim": false
   }
 }
 EOF
@@ -194,21 +194,20 @@ EOF
   done
 }
 
-create_keycloak_roles() {
-  >&2 echo "====> Creating required TMC roles"
+create_keycloak_groups() {
+  >&2 echo "====> Creating required TMC groups"
   for role in 'admin' 'members'
   do
     docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
       --rm \
       -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
       bitnami/keycloak \
-      get roles -r "$KEYCLOAK_TMC_REALM" | jq -e '.[] | select(.name == "tmc:'"$role"'") | .id?' >/dev/null  && continue
-    description="$(sed -E 's/ss\.$/s./' <<< "TMC ${role^}s.")"
+      get groups -r "$KEYCLOAK_TMC_REALM" | jq -e '.[] | select(.name == "tmc:'"$role"'") | .id?' >/dev/null  && continue
     docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
       --rm \
       -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
       bitnami/keycloak \
-      create roles -r "$KEYCLOAK_TMC_REALM" -s name="tmc:$role" -s description="$description" || return 1
+      create groups -r "$KEYCLOAK_TMC_REALM" -s name="tmc:$role" || return 1
   done
 
 }
@@ -251,19 +250,18 @@ create_okta_integration_admin_mapper() {
       -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
       bitnami/keycloak \
       get identity-provider/instances/okta-integration/mappers -r "$KEYCLOAK_TMC_REALM" |
-        jq -e '.[] | select(.name == "tmc:admin") | .id?' >/dev/null && return 0
+        jq -e '.[] | select(.name == "map-admins-to-admins") | .id?' >/dev/null && return 0
 
   json="$(cat <<-EOF
 {
-  "name": "tmc:admin",
+  "name": "map-admins-to-admins",
   "config": {
     "syncMode": "INHERIT",
-    "are.claim.values.regex": false,
-    "group": "",
-    "claims": "[{\"key\":\"exp\",\"value\":\"*\"}]",
-    "role": "tmc:admin"
+    "are.claim.values.regex": "true",
+    "group": "/tmc:admin",
+    "claims": "[{\"key\":\"groups\",\"value\":\"tmc:admin\"}]"
   },
-  "identityProviderMapper": "oidc-advanced-role-idp-mapper",
+  "identityProviderMapper": "oidc-advanced-group-idp-mapper",
   "identityProviderAlias": "okta-integration"
 }
 EOF
@@ -355,7 +353,7 @@ chart_version=$(helm search repo bitnami/keycloak --versions --output json |
   create_keycloak_realm "$domain" &&
   create_additional_oauth_scopes &&
   add_hardcoded_claims_to_email_and_tenant_id_scopes &&
-  create_keycloak_roles "$domain" &&
+  create_keycloak_groups "$domain" &&
   configure_okta_saml_provider "$okta_client_id" "$okta_client_secret" &&
   create_okta_integration_admin_mapper &&
   create_tmc_client "$domain" &&

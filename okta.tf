@@ -2,6 +2,27 @@ data "okta_user" "me" {
   user_id = "me"
 }
 
+data "okta_auth_server" "default" {
+  name = "default"
+}
+
+resource "okta_auth_server_scope" "groups" {
+  auth_server_id   = data.okta_auth_server.default.id
+  metadata_publish = "ALL_CLIENTS"
+  name             = "groups"
+  consent          = "IMPLICIT"
+}
+
+resource "okta_auth_server_claim" "groups" {
+  auth_server_id          = data.okta_auth_server.default.id
+  name                    = "groups"
+  value                   = "tmc:.*"
+  value_type              = "GROUPS"
+  claim_type              = "IDENTITY"
+  always_include_in_token = true
+  group_filter_type       = "REGEX"
+}
+
 resource "okta_group" "admin" {
   name        = "tmc:admin"
   description = "TMC Admin Group"
@@ -31,4 +52,18 @@ resource "okta_app_oauth" "tmc" {
   response_types         = ["token", "code"]
   refresh_token_rotation = "ROTATE"
   refresh_token_leeway   = 60
+  groups_claim {
+    type        = "FILTER"
+    filter_type = "REGEX"
+    name        = "groups"
+    value       = "tmc:.*"
+  }
+}
+
+resource "okta_app_group_assignments" "tmc" {
+  app_id = okta_app_oauth.tmc.id
+  group {
+    id       = okta_group.admin.id
+    priority = 1
+  }
 }
