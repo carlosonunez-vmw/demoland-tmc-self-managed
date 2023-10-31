@@ -80,7 +80,7 @@ install_tmc() {
 }
 
 get_letsencrypt_ca_chain() {
-  curl -sL https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem
+  curl -sL https://curl.se/ca/cacert.pem
 }
 
 tmc_cluster_arn=$(tf_output tmc_cluster_arn)
