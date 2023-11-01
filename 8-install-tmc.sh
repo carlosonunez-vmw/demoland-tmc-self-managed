@@ -21,8 +21,10 @@ log_into_keycloak() {
   if test -f "$KEYCLOAK_CONFIG_DIR/kcadm.config"
   then
     now=$(date +%s)
+    # thanks, keycloak, fo providing a hyper-specific expiration time
+    # for no reason. UNIX epoch times are only ten digits long.
     expiration_time=$(jq -r '.endpoints | to_entries[] | .value.master.expiresAt' \
-      "$KEYCLOAK_CONFIG_DIR/kcadm.config") &&
+      "$KEYCLOAK_CONFIG_DIR/kcadm.config" | head -c 10) &&
       test "$now" -lt "$expiration_time" && return 0
 
   fi
@@ -82,13 +84,12 @@ install_tmc() {
 get_letsencrypt_ca_chain() {
   curl -sL https://curl.se/ca/cacert.pem
 }
-
+keycloak_password="$(tf_output keycloak_password)"
+domain="$(domain)" || exit 1
+log_into_keycloak "$domain" "$keycloak_password" || exit 1
 tmc_cluster_arn=$(tf_output tmc_cluster_arn)
 kubectl config use-context "$tmc_cluster_arn"
-domain="$(domain)" &&
-  keycloak_password="$(tf_output keycloak_password)" &&
   letsencrypt_cas=$(get_letsencrypt_ca_chain) &&
-  log_into_keycloak "$domain" "$keycloak_password" &&
   minio_password="$(tf_output minio_password)" &&
   postgres_password="$(tf_output postgres_password)" &&
   client_url=$(get_issuer_url_from_keycloak "$domain") &&
