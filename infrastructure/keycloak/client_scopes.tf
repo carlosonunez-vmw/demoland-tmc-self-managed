@@ -10,12 +10,6 @@ resource "keycloak_openid_client_scope" "tenant_id" {
   description = "TMC tenant_id"
 }
 
-resource "keycloak_openid_client_scope" "email" {
-  realm_id    = keycloak_realm.tmc.id
-  name        = "email"
-  description = "TMC email"
-}
-
 resource "keycloak_openid_client_scope" "full_name" {
   realm_id    = keycloak_realm.tmc.id
   name        = "full_name"

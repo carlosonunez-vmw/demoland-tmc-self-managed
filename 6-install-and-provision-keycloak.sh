@@ -439,7 +439,10 @@ add_oauth_scopes_to_tmc_client() {
 
 configure_keycloak() {
   delete_tf_output_cache_keycloak
-  KEYCLOAK_URL="https://keycloak.$1" KEYCLOAK_USER=admin KEYCLOAK_PASSWORD="$2" $DOCKER_COMPOSE run --rm terraform-apply-keycloak
+  KEYCLOAK_USER=admin \
+    KEYCLOAK_PASSWORD="$2" \
+    DNS_TMC_DOMAIN="$1" \
+    $DOCKER_COMPOSE run --rm terraform-apply-keycloak
 }
 
 domain="$(domain)" || exit 1

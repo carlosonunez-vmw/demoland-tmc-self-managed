@@ -7,7 +7,8 @@ resource "keycloak_openid_client" "tmc" {
   valid_redirect_uris = [
     local.tmc_pinniped_supervisor_redirect_uri
   ]
-  login_theme = "keycloak"
+  login_theme           = "keycloak"
+  implicit_flow_enabled = true
 }
 
 resource "keycloak_openid_client_default_scopes" "scopes" {
