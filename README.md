@@ -103,13 +103,4 @@ Once TMC Self Managed has been provisioned, it's time to log in and explore.
 1. Open a browser and navigate to `https://compute.$CUSTOMER_NAME.$DOMAIN`
    and click on the "Sign In" button.
 2. You'll be redirected to Okta. Sign in.
-3. After signing in, you'll be asked to create a user within Keycloak. Fill in
-   the form and submit.
-4. After your first login, you'll get this error:
-
-   ```sh
-   Unprocessable Entity: email_verified claim in upstream ID token has false value
-   ```
-
-   Re-open a terminal and run `97-verify-user-email.sh` to fix, then log in
-   again.
+3. After signing in, you should be taken to the TMC home page.
