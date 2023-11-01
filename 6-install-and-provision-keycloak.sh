@@ -442,6 +442,10 @@ configure_keycloak() {
   KEYCLOAK_USER=admin \
     KEYCLOAK_PASSWORD="$2" \
     DNS_TMC_DOMAIN="$1" \
+    $DOCKER_COMPOSE run --rm terraform-init-keycloak || return 1
+  KEYCLOAK_USER=admin \
+    KEYCLOAK_PASSWORD="$2" \
+    DNS_TMC_DOMAIN="$1" \
     $DOCKER_COMPOSE run --rm terraform-apply-keycloak
 }
 

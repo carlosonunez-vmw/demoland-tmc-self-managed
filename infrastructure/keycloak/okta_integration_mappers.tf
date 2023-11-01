@@ -68,11 +68,14 @@ resource "keycloak_custom_identity_provider_mapper" "tmc_admins" {
   realm                    = keycloak_realm.tmc.id
   identity_provider_alias  = keycloak_oidc_identity_provider.okta.alias
   name                     = "tmc:admin"
-  identity_provider_mapper = "oidc-user-attribute-idp-mapper"
+  identity_provider_mapper = "oidc-advanced-group-idp-mapper"
   extra_config = {
     syncMode                 = "INHERIT"
     "are.claim.values.regex" = "true"
     group                    = "/${keycloak_group.admins.name}"
-    claim                    = "[{\"key\":\"groups\",\"value\":\"tmc:admin\"}]"
+    claim = jsonencode([{
+      key   = "groups",
+      value = "tmc:admin"
+    }])
   }
 }

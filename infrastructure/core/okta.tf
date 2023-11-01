@@ -47,7 +47,7 @@ resource "okta_app_oauth" "tmc" {
     "implicit"
   ]
   redirect_uris = [
-    "https://keycloak.${local.dns_tmc_domain}/realms/tanzu-products/broker/okta-integration/endpoint"
+    "https://keycloak.${local.dns_tmc_domain}/realms/TMC/broker/Okta/endpoint",
   ]
   response_types         = ["token", "code"]
   refresh_token_rotation = "ROTATE"

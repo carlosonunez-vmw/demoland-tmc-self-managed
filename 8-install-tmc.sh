@@ -16,12 +16,19 @@ install_tmc() {
 get_letsencrypt_ca_chain() {
   curl -sL https://curl.se/ca/cacert.pem
 }
+
+get_issuer_url_from_keycloak() {
+  curl -sS "https://keycloak.$1/realms/$2/.well-known/openid-configuration" |
+    jq -r .issuer
+}
+
 domain="$(domain)" || exit 1
 tmc_cluster_arn=$(tf_output tmc_cluster_arn)
 kubectl config use-context "$tmc_cluster_arn" &&
-  client_url="$(tf_keycloak_output tmc_client_oidc_config_url)" &&
-  client_id="$(tf_keycloak_output tmc_client_id)"
-  client_secret="$(tf_keycloak_output tmc_client_secret)"
+  realm="$(tf_keycloak_output tmc_sm_realm)" &&
+  client_id="$(tf_keycloak_output tmc_sm_client_id)" &&
+  client_url="$(get_issuer_url_from_keycloak "$domain" "$realm")" &&
+  client_secret="$(tf_keycloak_output tmc_sm_client_secret)"
   letsencrypt_cas=$(get_letsencrypt_ca_chain) &&
   minio_password="$(tf_output minio_password)" &&
   postgres_password="$(tf_output postgres_password)" &&
@@ -35,5 +42,4 @@ kubectl config use-context "$tmc_cluster_arn" &&
                  -v tmc_postgres_password="$postgres_password" \
                  -v lets_encrypt_chain="$letsencrypt_cas" \
                  -f "$(dirname "$0")/conf/tmc.values.yaml") &&
-  >&2 echo "INFO: template: $template"
    install_tmc "$template"
