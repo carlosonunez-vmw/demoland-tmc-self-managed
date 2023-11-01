@@ -59,13 +59,20 @@ within a Terraform workspace within that state.
 
 ##### Instructions
 
-1. Use the AWS CLI to create the bucket:
-   `aws s3 mb s3://my-bucket-name/my-bucket-key`
+1. Use the AWS CLI to create two state buckets: one for Keycloak, and another
+   for everything else:
+
+   ```sh
+   aws s3 mb s3://my-bucket-name/my-bucket-key
+   aws s3 mb s3://my-bucket-name/my-bucket-key-keycloak
+   ```
 2. Add this to `.env`:
 
    ```sh
-   TERRAFORM_STATE_BUCKET_NAME=my-bucket-name
-   TERRAFORM_STATE_BUCKET_KEY=my-bucket-key
+   TERRAFORM_STATE_S3_BUCKET_NAME=my-bucket-name
+   TERRAFORM_STATE_S3_BUCKET_KEY=my-bucket-key
+   TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_NAME=my-bucket-name-keycloak
+   TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_KEY=my-bucket-key
    ```
 
 #### Run the scripts

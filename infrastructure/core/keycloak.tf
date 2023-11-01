@@ -8,5 +8,16 @@ locals {
 }
 
 resource "random_string" "keycloak_password" {
-  length = 16
+  length  = 16
+  special = false
+}
+
+resource "random_string" "keycloak_db_password" {
+  length  = 16
+  special = false
+}
+
+resource "random_string" "keycloak_postgres_user_password" {
+  length  = 16
+  special = false
 }

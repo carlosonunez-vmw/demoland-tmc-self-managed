@@ -83,3 +83,11 @@ output "ebs_csi_controller_role_arn_tmc" {
 output "cluster_autoscaler_role_arn_tmc" {
   value = module.clusterautoscaler_irsa_role_tmc_cluster.iam_role_arn
 }
+
+output "keycloak_db_password" {
+  value = random_string.keycloak_db_password.result
+}
+
+output "keycloak_postgres_user_password" {
+  value = random_string.keycloak_postgres_user_password.result
+}

@@ -2,6 +2,7 @@
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
 source "$(dirname "$0")/scripts/terraform_output.sh"
+DOCKER_COMPOSE="docker-compose --log-level ERROR"
 OKTA_ORG_NAME="${OKTA_ORG_NAME?Please define OKTA_ORG_NAME in your .env}"
 OKTA_BASE_URL="${OKTA_BASE_URL?Please define OKTA_BASE_URL in your .env}"
 KEYCLOAK_CONFIG_DIR="$(dirname "$0")/.data/tanzu/keycloak"
@@ -22,6 +23,10 @@ metadata:
 auth:
   adminUser: admin
   adminPassword: "$3"
+postgresql:
+  auth:
+    password: "$4"
+    postgresPassword: "$5"
 ingress:
   enabled: true
   hostname: keycloak.$1
@@ -432,10 +437,15 @@ add_oauth_scopes_to_tmc_client() {
 
 }
 
+configure_keycloak() {
+  delete_tf_output_cache_keycloak
+  KEYCLOAK_URL="https://keycloak.$1" KEYCLOAK_USER=admin KEYCLOAK_PASSWORD="$2" $DOCKER_COMPOSE run --rm terraform-apply-keycloak
+}
+
 domain="$(domain)" || exit 1
 keycloak_password="$(tf_output keycloak_password)" || exit 1
-okta_client_id="$(tf_output okta_app_client_id)" || exit 1
-okta_client_secret="$(tf_output okta_app_client_secret)" || exit 1
+keycloak_db_password="$(tf_output keycloak_db_password)" || exit 1
+keycloak_postgres_user_pw="$(tf_output keycloak_postgres_user_password)" || exit 1
 add_bitnami_helm_repo || exit 1
 shared_svcs_cluster_arn=$(tf_output shared_svcs_cluster_arn) || exit 1
 kubectl config use-context "$shared_svcs_cluster_arn"
@@ -443,13 +453,5 @@ chart_version=$(helm search repo bitnami/keycloak --versions --output json |
   jq -r '.[] | select(.app_version == "'$KEYCLOAK_VERSION'") | .version' |
   sort -r |
   head -1) &&
-  install_keycloak "$domain" "$chart_version" "$keycloak_password" &&
-  log_into_keycloak "$domain" "$keycloak_password" &&
-  create_keycloak_realm "$domain" &&
-  create_additional_oauth_scopes &&
-  add_hardcoded_claims_to_email_and_tenant_id_scopes &&
-  create_keycloak_groups "$domain" &&
-  configure_okta_oidc_provider "$okta_client_id" "$okta_client_secret" &&
-  create_okta_integration_admin_mapper &&
-  create_tmc_client "$domain" &&
-  add_oauth_scopes_to_tmc_client
+  install_keycloak "$domain" "$chart_version" "$keycloak_password" "$keycloak_db_password" "$keycloak_postgres_user_pw" &&
+  configure_keycloak "$domain" "$keycloak_password" && exit "$?"

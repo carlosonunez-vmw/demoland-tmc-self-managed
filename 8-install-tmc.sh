@@ -4,74 +4,6 @@ TMC_VERSION=1.0.0
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
 
-get_issuer_url_from_keycloak() {
-  curl -sS "https://keycloak.$1/realms/tanzu-products/.well-known/openid-configuration" |
-    jq -r .issuer
-}
-
-get_client_secret_from_keycloak() {
-  docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
-    --rm \
-    -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
-    bitnami/keycloak \
-    get realms/tanzu-products/identity-provider/instances/okta-integration >/dev/null
-}
-
-log_into_keycloak() {
-  if test -f "$KEYCLOAK_CONFIG_DIR/kcadm.config"
-  then
-    now=$(date +%s)
-    # thanks, keycloak, fo providing a hyper-specific expiration time
-    # for no reason. UNIX epoch times are only ten digits long.
-    expiration_time=$(jq -r '.endpoints | to_entries[] | .value.master.expiresAt' \
-      "$KEYCLOAK_CONFIG_DIR/kcadm.config" | head -c 10) &&
-      test "$now" -lt "$expiration_time" && return 0
-
-  fi
-
-  docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
-    --rm \
-    -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
-    bitnami/keycloak \
-    config credentials \
-    --server "https://keycloak.$1" \
-    --realm master \
-    --user admin \
-    --password "$2"
-}
-
-get_client_id_from_keycloak() {
-  json=$(docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
-    --rm \
-    -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
-    bitnami/keycloak \
-    get clients -q clientId=tmc-sm -r tanzu-products) || return 1
-  jq -r '.[0].clientId' <<< "$json"
-}
-
-get_actual_id_from_keycloak() {
-  json=$(docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
-    --rm \
-    -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
-    bitnami/keycloak \
-    get clients -q clientId=tmc-sm -r tanzu-products) || return 1
-  jq -r '.[0].id' <<< "$json"
-}
-
-get_client_secret_from_keycloak() {
-  value=$(docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
-    --rm \
-    -v "$KEYCLOAK_CONFIG_DIR:/home/keycloak/.keycloak" \
-    bitnami/keycloak \
-    get "clients/$1/client-secret" -q id=tmc-sm -r tanzu-products | jq -r '.value') || return 1
-  if test "$value" == "null"
-  then
-    >&2 echo "ERROR: Unable to get client secret for tmc-sm $1"
-    return 1
-  fi
-  echo "$value"
-}
-
 install_tmc() {
   tanzu package install tanzu-mission-control -p tmc.tanzu.vmware.com \
     --version "$TMC_VERSION" \
@@ -84,18 +16,15 @@ install_tmc() {
 get_letsencrypt_ca_chain() {
   curl -sL https://curl.se/ca/cacert.pem
 }
-keycloak_password="$(tf_output keycloak_password)"
 domain="$(domain)" || exit 1
-log_into_keycloak "$domain" "$keycloak_password" || exit 1
 tmc_cluster_arn=$(tf_output tmc_cluster_arn)
-kubectl config use-context "$tmc_cluster_arn"
+kubectl config use-context "$tmc_cluster_arn" &&
+  client_url="$(tf_keycloak_output tmc_client_oidc_config_url)" &&
+  client_id="$(tf_keycloak_output tmc_client_id)"
+  client_secret="$(tf_keycloak_output tmc_client_secret)"
   letsencrypt_cas=$(get_letsencrypt_ca_chain) &&
   minio_password="$(tf_output minio_password)" &&
   postgres_password="$(tf_output postgres_password)" &&
-  client_url=$(get_issuer_url_from_keycloak "$domain") &&
-  client_id=$(get_client_id_from_keycloak "$domain") &&
-  actual_id=$(get_actual_id_from_keycloak "$domain") &&
-  client_secret=$(get_client_secret_from_keycloak "$actual_id") &&
   template=$(ytt -v cluster_issuer=letsencrypt-prod \
                  -v domain="$domain" \
                  -v harbor_repo="harbor.$domain" \

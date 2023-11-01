@@ -72,6 +72,11 @@ services:
     environment:
       - TERRAFORM_STATE_S3_BUCKET_NAME=${TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_NAME}
       - TERRAFORM_STATE_S3_BUCKET_KEY=${TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_KEY}
+  terraform-plan-keycloak:
+    extends: terraform-keycloak
+    command:
+      - plan
+      - -input=false
   terraform-apply-keycloak:
     extends: terraform-keycloak
     command:
