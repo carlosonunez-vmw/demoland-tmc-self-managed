@@ -159,7 +159,7 @@ EOF
   "config": {
     "claim.name": "groups",
     "full.path": false,
-    "id.token.claim": "false",
+    "id.token.claim": "true",
     "access.token.claim": "true",
     "userinfo.token.claim": false
   }
@@ -212,7 +212,7 @@ create_keycloak_groups() {
 
 }
 
-configure_okta_saml_provider() {
+configure_okta_oidc_provider() {
   >&2 echo "====> Setting up Keycloak/Okta Integration"
   discovery_endpoint="https://${OKTA_ORG_NAME}.${OKTA_BASE_URL}/oauth2/default/.well-known/openid-configuration?client_id=$1"
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
@@ -233,7 +233,8 @@ configure_okta_saml_provider() {
   payload=$(jq -c \
     --arg id "$1" \
     --arg secret "$2" \
-    '{"alias":"okta-integration","displayName":"Okta Integration","providerId":"oidc","trustEmail":true,"config":.} | .config.clientId=$id | .config.clientSecret=$secret' <<< "$config") || return 1
+    --arg scopes 'openid email groups profile' \
+    '{"alias":"okta-integration","displayName":"Okta Integration","providerId":"oidc","trustEmail":true,"config":.} | .config.clientId=$id | .config.clientSecret=$secret | .config.defaultScope=$scopes' <<< "$config") || return 1
 
   docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
     --rm \
@@ -252,7 +253,95 @@ create_okta_integration_admin_mapper() {
       get identity-provider/instances/okta-integration/mappers -r "$KEYCLOAK_TMC_REALM" |
         jq -e '.[] | select(.name == "map-admins-to-admins") | .id?' >/dev/null && return 0
 
-  json="$(cat <<-EOF
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  email_mapper="$(cat <<-EOF
+{
+    "id": "1cd34860-dbe7-4d56-bf8b-5770817710d8",
+    "name": "email",
+    "identityProviderAlias": "okta-integration",
+    "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+    "config": {
+        "syncMode": "INHERIT",
+        "are.claim.values.regex": "false",
+        "claim": "email",
+        "user.attribute": "email",
+        "attribute": "firstName"
+    }
+}
+EOF
+)"
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  email_verified_mapper="$(cat <<-EOF
+{
+    "id": "4c37d742-ccfe-489d-bfb8-af9003bc87d4",
+    "name": "email_verified",
+    "identityProviderAlias": "okta-integration",
+    "identityProviderMapper": "hardcoded-attribute-idp-mapper",
+    "config": {
+        "attribute.value": "true",
+        "syncMode": "INHERIT",
+        "are.claim.values.regex": "false",
+        "attribute": "emailVerified"
+    }
+}
+EOF
+)"
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  first_name_hardcoded_mapper="$(cat <<-EOF
+{
+    "id": "02956ec2-f81b-48d0-8a17-6cb3fe9f7458",
+    "name": "firstName",
+    "identityProviderAlias": "okta-integration",
+    "identityProviderMapper": "hardcoded-attribute-idp-mapper",
+    "config": {
+        "attribute.value": "TMC",
+        "syncMode": "INHERIT",
+        "are.claim.values.regex": "false",
+        "attribute": "firstName"
+    }
+}
+EOF
+)"
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  last_name_hardcoded_mapper="$(cat <<-EOF
+{
+    "id": "0f75d533-c81c-4cdd-bd90-22ba6b8e913a",
+    "name": "lastName",
+    "identityProviderAlias": "okta-integration",
+    "identityProviderMapper": "hardcoded-attribute-idp-mapper",
+    "config": {
+        "attribute.value": "User",
+        "syncMode": "INHERIT",
+        "are.claim.values.regex": "false",
+        "attribute": "lastName"
+    }
+}
+EOF
+)"
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  username_mapper="$(cat <<-EOF
+{
+    "id": "14f3e853-fad1-4b04-9e2e-0624852ecd91",
+    "name": "user-name",
+    "identityProviderAlias": "okta-integration",
+    "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+    "config": {
+        "syncMode": "INHERIT",
+        "are.claim.values.regex": "false",
+        "claim": "email",
+        "user.attribute": "username"
+    }
+}
+EOF
+)"
+  # used via ${!var} expansion.
+  # shellcheck disable=SC2034
+  admin_mapper="$(cat <<-EOF
 {
   "name": "map-admins-to-admins",
   "config": {
@@ -266,12 +355,18 @@ create_okta_integration_admin_mapper() {
 }
 EOF
 )"
-  docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
-    --rm \
-    -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
-    bitnami/keycloak create identity-provider/instances/okta-integration/mappers \
-    -b "$json" \
-    -r "$KEYCLOAK_TMC_REALM" || return 1
+  for mapper in admin email email_verified first_name_hardcoded \
+    last_name_hardcoded
+  do
+    var="${mapper}_mapper"
+    json="${!var}"
+    docker run --entrypoint /opt/bitnami/keycloak/bin/kcadm.sh \
+      --rm \
+      -v ./.data/tanzu/keycloak:/home/keycloak/.keycloak \
+      bitnami/keycloak create identity-provider/instances/okta-integration/mappers \
+      -b "$json" \
+      -r "$KEYCLOAK_TMC_REALM" || return 1
+  done
 }
 
 create_tmc_client() {
@@ -354,7 +449,7 @@ chart_version=$(helm search repo bitnami/keycloak --versions --output json |
   create_additional_oauth_scopes &&
   add_hardcoded_claims_to_email_and_tenant_id_scopes &&
   create_keycloak_groups "$domain" &&
-  configure_okta_saml_provider "$okta_client_id" "$okta_client_secret" &&
+  configure_okta_oidc_provider "$okta_client_id" "$okta_client_secret" &&
   create_okta_integration_admin_mapper &&
   create_tmc_client "$domain" &&
   add_oauth_scopes_to_tmc_client
