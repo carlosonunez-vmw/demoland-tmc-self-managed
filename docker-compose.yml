@@ -1,10 +1,10 @@
 version: '2.7'
 services:
-  terraform:
+  terraform-base:
     image: carlosnunez/terraform:1.4.1-arm64
-    working_dir: /work
     volumes:
-      - $PWD:/work
+      - $PWD/scripts:/scripts
+    working_dir: /work
     env_file: .env
     environment:
       - AWS_ACCESS_KEY_ID
@@ -14,18 +14,34 @@ services:
       - TF_VAR_domain_name=${DOMAIN_NAME}
       - TF_VAR_customer_name=${CUSTOMER_NAME}
       - TF_VAR_product_name=${PRODUCT_NAME}
-  terraform-init:
-    extends: terraform
+  terraform-init-base:
+    extends: terraform-base
     entrypoint: bash
     environment:
       DEFAULT_TERRAFORM_STATE_S3_BUCKET_REGION: us-east-2
     command:
       - -c
       - "{ test -z ${REINIT} && test -f /work/.terraform/initialized; } && exit 0; \
-         ./scripts/create_backend.sh && \
+         /scripts/create_backend.sh && \
          git config --global --add safe.directory '*' && \
          terraform init -backend-config=/tmp/conf.tfbackend && \
          touch /work/.terraform/initialized"
+  terraform:
+    extends: terraform-base
+    volumes:
+      - $PWD/infrastructure/core:/work
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_REGION=us-east-2
+      - TF_VAR_domain_name=${DOMAIN_NAME}
+      - TF_VAR_customer_name=${CUSTOMER_NAME}
+      - TF_VAR_product_name=${PRODUCT_NAME}
+  terraform-init:
+    extends: terraform-init-base
+    volumes:
+      - $PWD/infrastructure/core:/work
   terraform-plan:
     extends: terraform
     command:
@@ -38,8 +54,33 @@ services:
       - -input=false
       - -auto-approve
       - -compact-warnings
-  terraform-output:
-    extends: terraform
+  terraform-keycloak:
+    extends: terraform-base
+    volumes:
+      - $PWD/infrastructure/keycloak:/work
+    environment:
+      - KEYCLOAK_CLIENT_ID="master-realm"
+      - KEYCLOAK_URL="keycloak.${TMC_FQDN}"
+      - KEYCLOAK_USER
+      - KEYCLOAK_PASSWORD
+      - TERRAFORM_STATE_S3_BUCKET_NAME="${TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_NAME}"
+      - TERRAFORM_STATE_S3_BUCKET_KEY="${TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_KEY}"
+  terraform-init-keycloak:
+    extends: terraform-init-base
+    volumes:
+      - $PWD/infrastructure/keycloak:/work
+    environment:
+      - TERRAFORM_STATE_S3_BUCKET_NAME=${TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_NAME}
+      - TERRAFORM_STATE_S3_BUCKET_KEY=${TERRAFORM_STATE_S3_KEYCLOAK_BUCKET_KEY}
+  terraform-apply-keycloak:
+    extends: terraform-keycloak
+    command:
+      - apply
+      - -input=false
+      - -auto-approve
+      - -compact-warnings
+  terraform-output-keycloak:
+    extends: terraform-keycloak
     command:
       - output
       - -json
