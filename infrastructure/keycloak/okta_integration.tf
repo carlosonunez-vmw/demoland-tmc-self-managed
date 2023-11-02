@@ -6,4 +6,5 @@ resource "keycloak_oidc_identity_provider" "okta" {
   client_id         = data.okta_app_oauth.app.client_id
   client_secret     = data.okta_app_oauth.app.client_secret
   default_scopes    = local.okta_default_scopes
+  trust_email       = true
 }

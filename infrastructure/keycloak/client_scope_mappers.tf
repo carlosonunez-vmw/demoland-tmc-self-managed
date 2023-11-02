@@ -5,7 +5,7 @@ resource "keycloak_generic_protocol_mapper" "groups" {
   protocol        = "openid-connect"
   protocol_mapper = "oidc-group-membership-mapper"
   config = {
-    "claim.name"         = "tenant"
+    "claim.name"         = "groups"
     "access.token.claim" = "true"
     "id.token.claim"     = "true"
   }
