@@ -91,3 +91,40 @@ services:
     command:
       - output
       - -json
+  terraform-example-clusters:
+    extends: terraform-base
+    volumes:
+      - $PWD/infrastructure/example-clusters:/work
+    environment:
+      - TF_LOG
+      - example-clusters_USER
+      - example-clusters_PASSWORD
+      - example-clusters_CLIENT_ID=admin-cli
+      - example-clusters_URL=https://example-clusters.${DNS_TMC_DOMAIN}
+      - TERRAFORM_STATE_S3_BUCKET_NAME="${TERRAFORM_STATE_S3_EXAMPLE_CLUSTERS_BUCKET_NAME}"
+      - TERRAFORM_STATE_S3_BUCKET_KEY="${TERRAFORM_STATE_S3_EXAMPLE_CLUSTERS_BUCKET_KEY}"
+      - TF_VAR_dns_tmc_domain=${DNS_TMC_DOMAIN}
+  terraform-init-example-clusters:
+    extends: terraform-init-base
+    volumes:
+      - $PWD/infrastructure/example-clusters:/work
+    environment:
+      - TERRAFORM_STATE_S3_BUCKET_NAME=${TERRAFORM_STATE_S3_EXAMPLE_CLUSTERS_BUCKET_NAME}
+      - TERRAFORM_STATE_S3_BUCKET_KEY=${TERRAFORM_STATE_S3_EXAMPLE_CLUSTERS_BUCKET_KEY}
+  terraform-plan-example-clusters:
+    extends: terraform-example-clusters
+    command:
+      - plan
+      - -input=false
+  terraform-apply-example-clusters:
+    extends: terraform-example-clusters
+    command:
+      - apply
+      - -input=false
+      - -auto-approve
+      - -compact-warnings
+  terraform-output-example-clusters:
+    extends: terraform-example-clusters
+    command:
+      - output
+      - -json

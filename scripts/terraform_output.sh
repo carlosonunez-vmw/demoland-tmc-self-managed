@@ -47,10 +47,18 @@ tf_keycloak_output() {
   _tf_output "terraform-keycloak" "$1"
 }
 
+tf_example_clusters_output() {
+  _tf_output "terraform-example-clusters" "$1"
+}
+
 delete_tf_output_cache() {
   _delete_tf_output_cache "terraform"
 }
 
 delete_tf_output_cache_keycloak() {
   _delete_tf_output_cache "terraform-keycloak"
+}
+
+delete_tf_output_cache_example_clusters() {
+  _delete_tf_output_cache "terraform-example-clusters"
 }
