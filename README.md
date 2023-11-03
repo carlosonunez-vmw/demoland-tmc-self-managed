@@ -1,7 +1,46 @@
 # tmc-on-aws
 
+This guide will help you set up a fully-functional and _mostly_ production-ready
+installation of Tanzu Mission Control on AWS EKS.
+
+## Scripts
+
+If you need something _right now_, each guide is accompanied by a script. Run
+them in order, and you'll have a real-deal TMC installation in about 30 minutes.
+
+> ✅ You might need to run `4-provision-harbor.sh` and `8-install-tmc` twice
+> in order for Harbor and TMC to be installed successfully.
+
+## Costs
+
+| Service                                   | Quantity | $/hr | Total $/hr |
+| :-----:                                   | :------: | :--: | :--------: |
+| EKS                                       | 2        | 0.10 | 0.20       |
+| EC2 Spot Worker Nodes, `t3a.xlarge`       | 6        | 0.08 | 0.48       |
+| EBS Volumes (for k8s PVs)                 | ~115Gi   | 0.10 | 11.5       |
+| Route53 Hosted Zone                       | 1        | 0.50 | 0.50       |
+| Route53 Queries (assuming `<=1B queries`) | 1        | 0.40 | 0.40       |
+| **Total Hourly Cost**                     |          |      | 13.08      |
+
 This project will help you stand up Tanzu Mission Control on TKGm clusters
 within AWS.
+
+## Guide
+
+> ⚠️  This section is a work in progress. Some guides might not be complete yet.
+
+- [Prerequisites](./guide/prereqs.md)
+- [Create the Tanzu Mission Control and Shared Services clusters](./guide/create.md)
+- [Install the Tanzu CLI and `kapp-controller`](./guide/install-tools.md)
+- [Install Cert Manager and Contour](./guide/cert-manager-contour.md)
+- [Install and configure Harbor in Shared Services cluster](./guide/harbor.md)
+- [Push Tanzu Mission Control images into Harbor](./guide/images.md)
+- [Configure Okta](./guide/okta.md)
+- [Install and configure Keycloak](./guide/keycloak.md)
+- [Provision TMC Package Repository in TMC cluster](./guide/repo.md)
+- [Install Tanzu Mission Control in TMC Cluster](./install-tmc.md)
+- [Log In](./log-in.md)
+- [Cleanup](./cleanup.md)
 
 ## Prerequisites
 
