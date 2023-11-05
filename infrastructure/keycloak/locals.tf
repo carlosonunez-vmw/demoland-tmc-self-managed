@@ -13,3 +13,13 @@ locals {
 variable "dns_tmc_domain" {
   description = "The DNS domain serving TMC. You can find this in 'dns.tf' in infrastructure/core"
 }
+
+variable "keycloak_test_user" {
+  description = <<-EOF
+A test user to create within Keycloak. This user must be an email address and must match the user that's provided to Okta
+EOF
+}
+
+variable "keycloak_test_password" {
+  description = "A test password to initialize 'keycloak_test_user' with"
+}

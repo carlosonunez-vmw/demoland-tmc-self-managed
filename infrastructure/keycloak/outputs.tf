@@ -10,3 +10,11 @@ output "tmc_sm_client_secret" {
 output "tmc_sm_realm" {
   value = keycloak_realm.tmc.id
 }
+
+output "keycloak_test_user" {
+  value = var.keycloak_test_user
+}
+
+output "keycloak_test_password" {
+  value = var.keycloak_test_password
+}

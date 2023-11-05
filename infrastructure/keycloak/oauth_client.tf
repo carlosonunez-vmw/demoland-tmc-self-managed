@@ -14,9 +14,10 @@ resource "keycloak_openid_client" "tmc" {
     local.tmc_pinniped_supervisor_redirect_uri,
     "http://127.0.0.1:8080"
   ]
-  login_theme           = "keycloak"
-  implicit_flow_enabled = true
-  standard_flow_enabled = true
+  login_theme                  = "keycloak"
+  implicit_flow_enabled        = true
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = true
 }
 
 resource "keycloak_openid_client_default_scopes" "scopes" {
