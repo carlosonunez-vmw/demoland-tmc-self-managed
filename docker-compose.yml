@@ -1,9 +1,13 @@
 version: '2.7'
 services:
   terraform-base:
-    image: carlosnunez/terraform:1.4.1-arm64
+    build:
+      dockerfile: terraform.Dockerfile
+      context: .
     volumes:
       - $PWD/scripts:/scripts
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
     working_dir: /work
     env_file: .env
     environment:
