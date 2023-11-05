@@ -5,6 +5,7 @@ TAP_VERSION=1.5.2
 TMC_VERSION=1.0.0
 TANZU_CLI_DIRECTORY="$(dirname "$(realpath "$0")")/.data/tanzu"
 TMC_INSTALLER_TAR_FILE="tmc-self-managed-${TMC_VERSION}.tar"
+LEGACY_TMC_CLI=https://tmc-cli.s3-us-west-2.amazonaws.com/tmc/0.5.4-a97cb9fb/darwin/x64/tmc
 export VCC_USER="${VMWARE_CUSTOMER_CONNECT_EMAIL?Please provide VMWARE_EMAIL in your .env}"
 export VCC_PASS="${VMWARE_CUSTOMER_CONNECT_PASSWORD?Please provide VMWARE_PASSWORD in your .env}"
 
@@ -67,10 +68,10 @@ install_vcc() {
        sudo chmod +x /usr/local/bin/vcc
 }
 
-download_tmc_from_customer_connect() {
+download_tmc_sm_installer_from_customer_connect() {
   test -f "${TANZU_CLI_DIRECTORY}/$TMC_INSTALLER_TAR_FILE" && return 0
 
-  >&2 echo "===> Downloading TMC SM; this might take a few minutes."
+  >&2 echo "===> Downloading TMC SM installer; this might take a few minutes."
   vcc download -p vmware_tanzu_mission_control_self_managed  \
     -s tmc-sm \
     -v "1.0" \
@@ -79,7 +80,7 @@ download_tmc_from_customer_connect() {
     --accepteula
 }
 
-extract_tmc() {
+extract_tmc_sm_installer() {
   test -f "${TANZU_CLI_DIRECTORY}/tmc/tmc-sm" && return 0
 
   test -d "${TANZU_CLI_DIRECTORY}/tmc" || mkdir -p "${TANZU_CLI_DIRECTORY}/tmc"
@@ -97,6 +98,18 @@ install_kapp_controller() {
   done
 }
 
+install_tmc_cli() {
+  # The Mission Control plugin will be integrated into TMC 1.1 and will be installable like this:
+  # /usr/local/bin/tanzu plugin install --group vmware-tmc/default
+  #
+  # Until then, you need to use the legacy TMC CLI.
+  if ! docker images | grep tmc-cli
+  then docker image build --pull \
+    --platform=linux/amd64 \
+    -t tmc-cli - < "$(dirname "$0")/tmc-cli.Dockerfile"
+  fi
+}
+
 token="${1?Please provide a Pivotal Network token}"
 tanzu_cli_tar_present || {
   create_tanzu_cli_dir &&
@@ -107,5 +120,6 @@ extract_tanzu_cli_tar &&
   install_tanzu_cli &&
   install_tanzu_plugins &&
   install_vcc &&
-  download_tmc_from_customer_connect &&
-  extract_tmc
+  download_tmc_sm_installer_from_customer_connect &&
+  extract_tmc_sm_installer &&
+  install_tmc_cli
