@@ -34,7 +34,7 @@ kubectl config use-context "$tmc_cluster_arn" &&
   postgres_password="$(tf_output postgres_password)" &&
   template=$(ytt -v cluster_issuer=letsencrypt-prod \
                  -v domain="$domain" \
-                 -v harbor_repo="harbor.$domain" \
+                 -v harbor_repo="harbor.$domain/tmc-$TMC_VERSION" \
                  -v minio_password="$minio_password" \
                  -v keycloak_client_id="$client_id" \
                  -v keycloak_client_secret="$client_secret" \
