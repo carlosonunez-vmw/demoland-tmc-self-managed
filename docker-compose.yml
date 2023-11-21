@@ -1,5 +1,15 @@
 version: '2.7'
 services:
+  tmc-cli:
+    build:
+      dockerfile: tmc-cli.Dockerfile
+      context: .
+    platform: linux/amd64
+    environment:
+      - TMC_SELF_MANAGED_USERNAME
+      - TMC_SELF_MANAGED_PASSWORD
+    volumes:
+      - $PWD/.data/tanzu/tmc-cli:/root/.vmware-cna-saas
   terraform-base:
     build:
       dockerfile: terraform.Dockerfile

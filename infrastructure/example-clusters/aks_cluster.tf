@@ -12,7 +12,6 @@ resource "azurerm_kubernetes_cluster" "tmc-example" {
     name                = "default"
     vm_size             = "Standard_D2_v5"
     enable_auto_scaling = true
-    node_count          = 1
     min_count           = 1
     max_count           = 5
   }
