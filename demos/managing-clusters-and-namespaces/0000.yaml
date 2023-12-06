@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: powershell-playground
+  namespace: example-student-example-course-2
+  labels:
+    course: "0000-jcac-course"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      course: "0000-jcac-course"
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      name: kali-linux-desktop
+      labels:
+        course: "0000-jcac-course"
+    spec:
+      containers:
+        - name: desktop-0
+          image: harbor.compute.example.tanzufederal.com/course-images/0000-jcac-course:2023.01-amd64
+          imagePullPolicy: Always
+          command:
+            - sleep
+            - infinity

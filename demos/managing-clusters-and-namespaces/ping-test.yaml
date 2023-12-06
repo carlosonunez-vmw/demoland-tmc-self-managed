@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-test
+  labels:
+    app: ping-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ping-test
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      name: ping-test
+      labels:
+        app: ping-test
+    spec:
+      containers:
+        - name: desktop-0
+          image: nicolaka/netshoot
+          command:
+            - sleep
+            - infinity

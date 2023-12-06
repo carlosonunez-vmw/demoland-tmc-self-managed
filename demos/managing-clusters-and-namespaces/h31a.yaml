@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kali-linux-desktop
+  namespace: example-student-example-course-2
+  labels:
+    course: "h31a-cyber-threat-course"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      course: "h31a-cyber-threat-course"
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      name: kali-linux-desktop
+      labels:
+        course: "h31a-cyber-threat-course"
+    spec:
+      containers:
+        - name: desktop-0
+          image: harbor.compute.example.tanzufederal.com/course-images/h31a-cyber-threat-course:2023.01-amd64
+          env:
+            - name: VNCPWD
+              valueFrom:
+                secretKeyRef:
+                  name: kali-linux-desktop-secret
+                  key: vnc-password
+          livenessProbe:
+            tcpSocket:
+              port: 5900
+          ports:
+            - containerPort: 5900
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kali-linux-desktop-vnc-service
+  namespace: example-student-example-course-2
+spec:
+  type: LoadBalancer
+  ports:
+    - name: tcp-59000-to-5900
+      port: 59000
+      protocol: TCP
+      targetPort: 5900
+  selector:
+    course: "h31a-cyber-threat-course"
