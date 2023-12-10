@@ -2,9 +2,10 @@
 source "$(dirname "$0")/scripts/terraform_output.sh"
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 TAP_VERSION=1.5.2
-TMC_VERSION=1.0.0
+TMC_VERSION=1.1.0
+TMC_VERSION_VCC=1.1.0 # NOTE: It's not guaranteed that TMC's version in Customer Connect is semver
 TANZU_CLI_DIRECTORY="$(dirname "$(realpath "$0")")/.data/tanzu"
-TMC_INSTALLER_TAR_FILE="tmc-self-managed-${TMC_VERSION}.tar"
+TMC_INSTALLER_TAR_FILE="tmc-self-managed-1.1.tar"
 LEGACY_TMC_CLI=https://tmc-cli.s3-us-west-2.amazonaws.com/tmc/0.5.4-a97cb9fb/darwin/x64/tmc
 export VCC_USER="${VMWARE_CUSTOMER_CONNECT_EMAIL?Please provide VMWARE_EMAIL in your .env}"
 export VCC_PASS="${VMWARE_CUSTOMER_CONNECT_PASSWORD?Please provide VMWARE_PASSWORD in your .env}"
@@ -71,20 +72,23 @@ install_vcc() {
 download_tmc_sm_installer_from_customer_connect() {
   test -f "${TANZU_CLI_DIRECTORY}/$TMC_INSTALLER_TAR_FILE" && return 0
 
-  >&2 echo "===> Downloading TMC SM installer; this might take a few minutes."
+  local tmc_version="$(cut -f1-2 -d '.' <<< "$TMC_VERSION")"
+  >&2 echo "===> Downloading TMC $tmc_version SM installer; this might take a few minutes."
   vcc download -p vmware_tanzu_mission_control_self_managed  \
     -s tmc-sm \
-    -v "1.0" \
+    -v "$TMC_VERSION_VCC" \
     -f "$TMC_INSTALLER_TAR_FILE" \
     -o "${TANZU_CLI_DIRECTORY}" \
     --accepteula
 }
 
 extract_tmc_sm_installer() {
-  test -f "${TANZU_CLI_DIRECTORY}/tmc/tmc-sm" && return 0
+  test -f "${TANZU_CLI_DIRECTORY}/tmc/docker/tmc-sm" && return 0
 
   test -d "${TANZU_CLI_DIRECTORY}/tmc" || mkdir -p "${TANZU_CLI_DIRECTORY}/tmc"
   tar -xf "${TANZU_CLI_DIRECTORY}/$TMC_INSTALLER_TAR_FILE" -C "${TANZU_CLI_DIRECTORY}/tmc"
+  mkdir -p "${TANZU_CLI_DIRECTORY}/tmc/docker"
+  mv "${TANZU_CLI_DIRECTORY}/tmc/tmc-sm" "${TANZU_CLI_DIRECTORY}/tmc/docker/"
 }
 
 install_kapp_controller() {
@@ -99,15 +103,20 @@ install_kapp_controller() {
 }
 
 install_tmc_cli() {
-  # The Mission Control plugin will be integrated into TMC 1.1 and will be installable like this:
-  # /usr/local/bin/tanzu plugin install --group vmware-tmc/default
-  #
-  # Until then, you need to use the legacy TMC CLI.
-  if ! docker images | grep tmc-cli
-  then docker image build --pull \
-    --platform=linux/amd64 \
-    -t tmc-cli - < "$(dirname "$0")/tmc-cli.Dockerfile"
+  if ! docker images | grep "tmc-cli-$TMC_VERSION"
+  then \
+    # NOTE: Copy the Dockerfile for the TMC CLI into the Tanzu CLI data directory
+    # to reduce image context size.
+    cp "$(dirname "$0")/tmc-cli.Dockerfile" "$TANZU_CLI_DIRECTORY/tmc/docker/Dockerfile"
+    docker build --pull \
+      --platform=linux/amd64 \
+      -t "tmc-cli-$TMC_VERSION" \
+      "$TANZU_CLI_DIRECTORY/tmc/docker"
   fi
+}
+
+install_tmc_plugin() {
+  tanzu plugin install --group vmware-tmc/default
 }
 
 token="${1?Please provide a Pivotal Network token}"
@@ -122,4 +131,5 @@ extract_tanzu_cli_tar &&
   install_vcc &&
   download_tmc_sm_installer_from_customer_connect &&
   extract_tmc_sm_installer &&
-  install_tmc_cli
+  install_tmc_cli &&
+  install_tmc_plugin
