@@ -7,27 +7,39 @@ some seriously scary situations.
 
 - Tanzu Mission Control provisioned (see [the README](../../README.md) at the
   root of this repo to create one)
-- 
-
-- Visual Studio Code
-- `kubectl`
-- AWS CLI.
+- An unattached Kubernetes cluster that is not Kind or Minikube
 
 ## Resounding Messages
 
-### Stop setting up local dev envs with App Live Update and Buildpacks
-
-App Live Update works with Buildpacks to make testing your apps in a production-like environment
-locally right from your IDE super easy.
+- Quickly recover from cluster outages with Velero
+- Quickly restore your cluster to a last-known-good state with Velero and
+  Rustic.
+- Enhance the reliability of your infrastructure with minimal Kubernetes
+  knowledge
 
 ### 3KP
 
-- The Build Service eliminates the need for Dockerfiles.
-- App Live Update eliminates the need for Docker Compose or similar abstractions
-  for containerized dev envs.
-- TAP's IDE plugins bring these features right to VSCode or IntelliJ.
+> This is still a work in progress. 
 
 ### Preparing for the demo
+
+1. Create a Kubernetes cluster on any platform and save its Kubeconfig somewhere
+   convenient.
+
+> ✅ The scripts at the root of this repository create this cluster for you on
+> EKS. Use the command below to get its Kubeconfig:
+>
+> ```sh
+> docker-compose run --rm terraform-example-clusters \
+>   output -raw eks_kubeconfig_to_add
+> ```
+
+2. Click on `Administration` then on the `Accounts` tab. Follow the prompts
+   to create a new credentials.
+
+2. Visit TMC. Click "Attach Cluster". Copy the `kubectl create` link and execute
+   it against your cluster, then click "Verify Connection" after a minute or
+   so.
 
 #### Environment
 
@@ -50,7 +62,7 @@ locally right from your IDE super easy.
 > ```
 
 2. Run `98-update-eks-kubeconfig.sh` at the root of this repo to update your system's Kubeconfig with a
-   context that's compatible with App Live Update.
+   context that's compatibl
 3. Run `8-set-up-dev-namespace.sh` at the root of this repo to create the dev namespace for our demo app
    along with its "testing" pipeline.
 
