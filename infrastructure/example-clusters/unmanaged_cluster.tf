@@ -1,30 +1,7 @@
-data "aws_caller_identity" "self" {}
-
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "4.0.1"
-
-  name = "tmc-example-clusters"
-  cidr = "172.16.0.0/16"
-
-  private_subnets = ["172.16.0.0/24",
-    "172.16.1.0/24",
-  "172.16.2.0/24"]
-  public_subnets = ["172.16.3.0/24",
-    "172.16.4.0/24",
-  "172.16.5.0/24"]
-  enable_nat_gateway = true
-  azs                = slice(sort(data.aws_availability_zones.available.names), 0, 3)
-}
-
-module "eks" {
+module "eks_unmanaged" {
   source                         = "terraform-aws-modules/eks/aws"
   version                        = "19.15.3"
-  cluster_name                   = "tmc-example-cluster"
+  cluster_name                   = "tmc-example-cluster-to-add"
   cluster_version                = "1.27"
   cluster_endpoint_public_access = true
   cluster_addons = {
@@ -65,11 +42,12 @@ module "eks" {
   ]
 }
 
-module "eks-kubeconfig" {
+
+module "eks_unmanaged-kubeconfig" {
   depends_on = [
-    module.eks
+    module.eks_unmanaged
   ]
   source       = "hyperbadger/eks-kubeconfig/aws"
   version      = "2.0.0"
-  cluster_name = module.eks.cluster_name
+  cluster_name = module.eks_unmanaged.cluster_name
 }

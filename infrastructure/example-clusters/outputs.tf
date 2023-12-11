@@ -8,7 +8,7 @@ output "eks_kubeconfig" {
   sensitive = true
 }
 
-output "eks_kubeconfig_to_add" {
-  value     = module.eks-kubeconfig-to-add.kubeconfig
+output "eks_unmanaged_kubeconfig" {
+  value     = module.eks_unmanaged-kubeconfig.kubeconfig
   sensitive = true
 }

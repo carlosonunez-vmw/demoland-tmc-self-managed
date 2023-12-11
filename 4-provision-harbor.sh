@@ -3,7 +3,7 @@
 export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
 source "$(dirname "$0")/scripts/terraform_output.sh"
-TMC_VERSION=1.0.0
+TMC_VERSION=1.1.0
 install_harbor() {
   echo "\
 apiVersion: v1

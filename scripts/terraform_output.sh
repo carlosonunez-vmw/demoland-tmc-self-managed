@@ -28,7 +28,7 @@ $(dirname "$0")/0-create-or-update-cluster.sh to add it to your Terraform state.
     return 0
   fi
   >&2 echo "===> Caching Terraform output; stand by. (Add REBUILD_OUTPUT=1 to refresh the output)"
-  docker-compose run --rm "$service" output -json > "$(_output_cache "$service")" || return 1
+  docker-compose run --quiet-pull --rm "$service" output -json > "$(_output_cache "$service")" || return 1
   export REBUILD_OUTPUT=""
   _tf_output "$service" "$key"
 }

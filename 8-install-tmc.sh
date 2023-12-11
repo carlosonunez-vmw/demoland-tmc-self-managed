@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 KEYCLOAK_CONFIG_DIR="$(dirname "$0")/.data/tanzu/keycloak"
-TMC_VERSION=1.0.0
+TMC_VERSION=1.1.0
 export $(egrep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
 source "$(dirname "$0")/scripts/domain.sh"
 
