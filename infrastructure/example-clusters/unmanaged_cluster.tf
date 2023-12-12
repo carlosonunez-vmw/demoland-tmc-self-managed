@@ -42,6 +42,19 @@ module "eks_unmanaged" {
   ]
 }
 
+module "ebs_irsa_role_unmanaged_cluster" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name             = "ebs-csi-tmc-cluster-shared-svcs-cluster"
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks_unmanaged.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
+}
 
 module "eks_unmanaged-kubeconfig" {
   depends_on = [
