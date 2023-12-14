@@ -159,11 +159,33 @@ write_kubeconfigs() {
   test -d "$KUBECONFIG_DIR" || mkdir -p "$KUBECONFIG_DIR"
   for kubeconfig in azure_kubeconfig \
     eks_kubeconfig \
-    eks_kubeconfig_to_add
+    eks_unmanaged_kubeconfig
   do
     >&2 echo "===> Writing Kubeconfig $kubeconfig"
     tf_example_clusters_output "$kubeconfig" > "$KUBECONFIG_DIR/${kubeconfig}.yaml"
   done
+}
+
+patch_ebs_csi_serviceaccount_in_unmanaged_cluster() {
+  ebs_csi_arn="$(tf_example_clusters_output ebs_csi_controller_role_arn_eks_unmanaged)" || return 1
+  tf_example_clusters_output eks_unmanaged_kubeconfig > /tmp/kubeconfig.yaml || return 1
+  kubectl -n /tmp/kubeconfig.yaml annotate sa -n kube-system ebs-csi-controller-sa \
+    "eks.amazonaws.com/role-arn=$ebs_csi_arn" \
+    --overwrite &&
+  kubectl -n /tmp/kubeconfig.yaml rollout restart -n kube-system deployment ebs-csi-controller &&
+  rm -rf /tmp/kubeconfig.yaml
+}
+
+create_velero_snapshot_class_for_unmanaged_cluster() {
+  kubectl apply -f - <<-EOF
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: gp2-snapshot-class
+  labels:
+    velero.io/csi-volumesnapshot-class: "true"
+driver: gp2
+EOF
 }
 
 _ensure_supervisor_creds_present || exit 1
@@ -179,4 +201,6 @@ log_into_tmc_cli "$domain" "$keycloak_user" "$keycloak_pass" &&
   insert_tmc_namespace_in_sv_cluster_into_reg_file &&
   register_tmc_with_management_cluster &&
   provision_example_clusters "$domain" "$keycloak_user" "$keycloak_pass" &&
+  patch_ebs_csi_serviceaccount_in_unmanaged_cluster &&
+  create_velero_snapshot_class_for_unmanaged_cluster &&
   write_kubeconfigs

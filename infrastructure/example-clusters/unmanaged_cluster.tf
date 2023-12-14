@@ -23,7 +23,7 @@ module "eks_unmanaged" {
   subnet_ids               = module.vpc.private_subnets
   control_plane_subnet_ids = module.vpc.public_subnets
   eks_managed_node_group_defaults = {
-    instance_types = ["t3a.xlarge"]
+    instance_types = ["t3a.2xlarge"]
     capacity_type  = "SPOT"
     desired_size   = 1
     min_size       = 1
@@ -42,6 +42,19 @@ module "eks_unmanaged" {
   ]
 }
 
+module "ebs_irsa_role_unmanaged_cluster" {
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+
+  role_name             = "ebs-csi-tmc-cluster-unmanaged-cluster"
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    p = {
+      provider_arn               = module.eks_unmanaged.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
+}
 
 module "eks_unmanaged-kubeconfig" {
   depends_on = [

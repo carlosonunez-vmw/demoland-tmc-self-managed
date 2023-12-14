@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+DOCKER_COMPOSE="docker-compose --log-level ERROR"
+export $(grep -Ev '^#' "$(dirname "$0")/.env" | xargs -0)
+source "$(dirname "$0")/scripts/domain.sh"
 source "$(dirname "$0")/scripts/terraform_output.sh"
 
 update_tmc_clusters_kubeconfig() {
