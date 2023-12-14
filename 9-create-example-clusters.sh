@@ -176,6 +176,18 @@ patch_ebs_csi_serviceaccount_in_unmanaged_cluster() {
   rm -rf /tmp/kubeconfig.yaml
 }
 
+create_velero_snapshot_class_for_unmanaged_cluster() {
+  kubectl apply -f - <<-EOF
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: gp2-snapshot-class
+  labels:
+    velero.io/csi-volumesnapshot-class: "true"
+driver: gp2
+EOF
+}
+
 _ensure_supervisor_creds_present || exit 1
 _ensure_kubectl_vsphere_plugin_installed || exit 1
 
@@ -190,4 +202,5 @@ log_into_tmc_cli "$domain" "$keycloak_user" "$keycloak_pass" &&
   register_tmc_with_management_cluster &&
   provision_example_clusters "$domain" "$keycloak_user" "$keycloak_pass" &&
   patch_ebs_csi_serviceaccount_in_unmanaged_cluster &&
+  create_velero_snapshot_class_for_unmanaged_cluster &&
   write_kubeconfigs
