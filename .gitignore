@@ -1,4 +1,5 @@
 .env*
+!.env.gpg
 !.env.example
 *.tfbackend
 .terraform
